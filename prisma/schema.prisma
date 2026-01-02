@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Role Model
+model Role {
+  id String @id @default(uuid())
+  code String @unique
+  status Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users UserRole[]
+
+  @@map("roles")
+}
+
+// User Model
+model User {
+  id             String    @id @default(uuid())
+  name           String?
+  profilePicUrl  String?
+  email          String?   @unique
+  password       String?
+  verified       Boolean   @default(false)
+  status         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  // Relations
+  roles          UserRole[]
+  keystores      Keystore[]
+  
+  @@map("users")
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// Keystore Model
+model Keystore {
+  id           String   @id @default(uuid())
+  userId       String
+  primaryKey   String
+  secondaryKey String
+  status       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  // Relations
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([userId, primaryKey, status])
+  @@index([userId, primaryKey, secondaryKey])
+  @@map("keystores")
+}
+
+// ApiKey Model
+model ApiKey {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  version     Int
+  permissions String[]
+  comments    String[]
+  status      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([key, status])
+  @@map("api_keys")
+}
