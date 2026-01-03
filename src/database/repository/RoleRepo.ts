@@ -1,13 +1,22 @@
-import Role, { RoleModel } from '../model/Role';
+import prisma from '../index';
+import { Role } from '@prisma/client';
 
 async function findByCode(code: string): Promise<Role | null> {
-  return RoleModel.findOne({ code: code, status: true }).lean().exec();
+  return await prisma.role.findFirst({
+    where: {
+      code: code,
+      status: true,
+    },
+  });
 }
 
 async function findByCodes(codes: string[]): Promise<Role[]> {
-  return RoleModel.find({ code: { $in: codes }, status: true })
-    .lean()
-    .exec();
+  return await prisma.role.findMany({
+    where: {
+      code: { in: codes },
+      status: true,
+    },
+  });
 }
 
 export default {

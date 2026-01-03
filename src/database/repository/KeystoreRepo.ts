@@ -1,57 +1,62 @@
-import Keystore, { KeystoreModel } from '../model/Keystore';
-import { Types } from 'mongoose';
-import User from '../model/User';
+import prisma from '../index';
+import { Keystore } from '@prisma/client';
 
-async function findforKey(client: User, key: string): Promise<Keystore | null> {
-  return KeystoreModel.findOne({
-    client: client,
-    primaryKey: key,
-    status: true,
-  })
-    .lean()
-    .exec();
+async function findForKey(
+  userId: string,
+  key: string,
+): Promise<Keystore | null> {
+  return prisma.keystore.findFirst({
+    where: {
+      userId,
+      primaryKey: key,
+      status: true,
+    },
+  });
 }
 
-async function remove(id: Types.ObjectId): Promise<Keystore | null> {
-  return KeystoreModel.findByIdAndDelete(id).lean().exec();
+async function remove(id: string): Promise<Keystore | null> {
+  return prisma.keystore.delete({
+    where: { id },
+  });
 }
 
-async function removeAllForClient(client: User) {
-  return KeystoreModel.deleteMany({ client: client }).exec();
+async function removeAllForClient(userId: string): Promise<{ count: number }> {
+  return prisma.keystore.deleteMany({
+    where: { userId },
+  });
 }
 
 async function find(
-  client: User,
+  userId: string,
   primaryKey: string,
   secondaryKey: string,
 ): Promise<Keystore | null> {
-  return KeystoreModel.findOne({
-    client: client,
-    primaryKey: primaryKey,
-    secondaryKey: secondaryKey,
-  })
-    .lean()
-    .exec();
+  return prisma.keystore.findFirst({
+    where: {
+      userId,
+      primaryKey,
+      secondaryKey,
+    },
+  });
 }
 
 async function create(
-  client: User,
+  userId: string,
   primaryKey: string,
   secondaryKey: string,
 ): Promise<Keystore> {
-  const now = new Date();
-  const keystore = await KeystoreModel.create({
-    client: client,
-    primaryKey: primaryKey,
-    secondaryKey: secondaryKey,
-    createdAt: now,
-    updatedAt: now,
+  // Prisma handles createdAt/updatedAt automatically!
+  return prisma.keystore.create({
+    data: {
+      userId, // ✅ Much simpler!
+      primaryKey,
+      secondaryKey,
+    },
   });
-  return keystore.toObject();
 }
 
 export default {
-  findforKey,
+  findForKey,
   remove,
   removeAllForClient,
   find,
