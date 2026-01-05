@@ -1,8 +1,7 @@
 import { Tokens } from 'app-request';
 import { AuthFailureError, InternalError } from '../core/ApiError';
 import JWT, { JwtPayload } from '../core/JWT';
-import { Types } from 'mongoose';
-import User from '../database/model/User';
+import { UserWithRoles } from '../database/types';
 import { tokenInfo } from '../config';
 
 export const getAccessToken = (authorization?: string) => {
@@ -21,14 +20,15 @@ export const validateTokenData = (payload: JwtPayload): boolean => {
     !payload.prm ||
     payload.iss !== tokenInfo.issuer ||
     payload.aud !== tokenInfo.audience ||
-    !Types.ObjectId.isValid(payload.sub)
+    !payload.sub || // Just check it's a non-empty string (UUID format)
+    typeof payload.sub !== 'string'
   )
     throw new AuthFailureError('Invalid Access Token');
   return true;
 };
 
 export const createTokens = async (
-  user: User,
+  user: UserWithRoles,
   accessTokenKey: string,
   refreshTokenKey: string,
 ): Promise<Tokens> => {
@@ -36,7 +36,7 @@ export const createTokens = async (
     new JwtPayload(
       tokenInfo.issuer,
       tokenInfo.audience,
-      user._id.toString(),
+      user.id, // Prisma User.id is a string UUID
       accessTokenKey,
       tokenInfo.accessTokenValidity,
     ),
@@ -48,7 +48,7 @@ export const createTokens = async (
     new JwtPayload(
       tokenInfo.issuer,
       tokenInfo.audience,
-      user._id.toString(),
+      user.id, // Prisma User.id is a string UUID
       refreshTokenKey,
       tokenInfo.refreshTokenValidity,
     ),

@@ -28,7 +28,8 @@ router.post(
     const accessTokenKey = crypto.randomBytes(64).toString('hex');
     const refreshTokenKey = crypto.randomBytes(64).toString('hex');
 
-    await KeystoreRepo.create(user, accessTokenKey, refreshTokenKey);
+    // KeystoreRepo.create expects userId (string), not user object
+    await KeystoreRepo.create(user.id, accessTokenKey, refreshTokenKey);
     const tokens = await createTokens(user, accessTokenKey, refreshTokenKey);
     const userData = await getUserData(user);
 

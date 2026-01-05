@@ -8,7 +8,6 @@ import {
 } from '../core/ApiError';
 import JWT from '../core/JWT';
 import KeystoreRepo from '../database/repository/KeystoreRepo';
-import { Types } from 'mongoose';
 import { getAccessToken, validateTokenData } from './authUtils';
 import validator, { ValidationSource } from '../helpers/validator';
 import schema from './schema';
@@ -25,11 +24,13 @@ export default router.use(
       const payload = await JWT.validate(req.accessToken);
       validateTokenData(payload);
 
-      const user = await UserRepo.findById(new Types.ObjectId(payload.sub));
+      // payload.sub is now a UUID string (Prisma User.id), not ObjectId
+      const user = await UserRepo.findById(payload.sub);
       if (!user) throw new AuthFailureError('User not registered');
       req.user = user;
 
-      const keystore = await KeystoreRepo.findforKey(req.user, payload.prm);
+      // KeystoreRepo.findForKey expects userId (string) and key (string)
+      const keystore = await KeystoreRepo.findForKey(req.user.id, payload.prm);
       if (!keystore) throw new AuthFailureError('Invalid access token');
       req.keystore = keystore;
 

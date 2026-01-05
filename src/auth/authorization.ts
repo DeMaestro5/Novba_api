@@ -16,10 +16,13 @@ export default router.use(
 
     let authorized = false;
 
+    // In Prisma, req.user.roles is UserRole[] with nested role objects
+    // Structure: { role: { id, code, ... } }[]
     for (const userRole of req.user.roles) {
       if (authorized) break;
       for (const role of roles) {
-        if (userRole._id.equals(role._id)) {
+        // Compare role codes or role IDs (both are strings in Prisma)
+        if (userRole.role.code === role.code || userRole.role.id === role.id) {
           authorized = true;
           break;
         }

@@ -4,14 +4,14 @@ import { RoleRequest } from 'app-request';
 import crypto from 'crypto';
 import UserRepo from '../../database/repository/UserRepo';
 import { BadRequestError } from '../../core/ApiError';
-import User from '../../database/model/User';
 import { createTokens } from '../../auth/authUtils';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import bcrypt from 'bcrypt';
-import { RoleCode } from '../../database/model/Role';
+import { RoleCode } from '../../database/types';
 import { getUserData } from './utils';
+import KeystoreRepo from '../../database/repository/KeystoreRepo';
 
 const router = express.Router();
 
@@ -26,20 +26,26 @@ router.post(
     const refreshTokenKey = crypto.randomBytes(64).toString('hex');
     const passwordHash = await bcrypt.hash(req.body.password, 10);
 
-    const { user: createdUser, keystore } = await UserRepo.create(
+    // UserRepo.create returns UserWithRoles (includes roles)
+    const createdUser = await UserRepo.create(
       {
         name: req.body.name,
         email: req.body.email,
         profilePicUrl: req.body.profilePicUrl,
         password: passwordHash,
-      } as User,
+      },
+      RoleCode.USER,
+    );
+
+    // Create keystore separately (Prisma approach)
+    const keystore = await KeystoreRepo.create(
+      createdUser.id, // Use Prisma User.id (string UUID)
       accessTokenKey,
       refreshTokenKey,
-      RoleCode.LEARNER,
     );
 
     const tokens = await createTokens(
-      createdUser,
+      createdUser, // Now properly typed as UserWithRoles
       keystore.primaryKey,
       keystore.secondaryKey,
     );
