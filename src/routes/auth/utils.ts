@@ -1,4 +1,5 @@
 import { UserWithRoles } from '../../database/types';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import _ from 'lodash';
 
 export const enum AccessMode {
