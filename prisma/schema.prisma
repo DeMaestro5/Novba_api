@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,11 +10,88 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Role Model
+// ============================================
+// ENUMS
+// ============================================
+
+enum PaymentTerms {
+  NET_15
+  NET_30
+  NET_60
+  DUE_ON_RECEIPT
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  UNPAID
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  STRIPE
+  BANK_TRANSFER
+  CASH
+  CHECK
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ExpenseCategory {
+  OFFICE_SUPPLIES
+  TRAVEL
+  MEALS
+  UTILITIES
+  SOFTWARE
+  EQUIPMENT
+  MARKETING
+  PROFESSIONAL_SERVICES
+  RENT
+  OTHER
+}
+
+enum EmailType {
+  INVOICE_SENT
+  REMINDER
+  PAYMENT_RECEIVED
+  VERIFICATION
+  PASSWORD_RESET
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+// ============================================
+// AUTHENTICATION & AUTHORIZATION
+// ============================================
+
 model Role {
-  id String @id @default(uuid())
-  code String @unique
-  status Boolean @default(true)
+  id        String   @id @default(uuid())
+  code      String   @unique
+  status    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -26,22 +101,65 @@ model Role {
   @@map("roles")
 }
 
-// User Model
 model User {
   id             String    @id @default(uuid())
-  name           String?
-  profilePicUrl  String?
-  email          String?   @unique
-  password       String?
+  
+  // Authentication fields (existing)
+  email          String    @unique
+  password       String?   // Keep as password or rename to passwordHash
   verified       Boolean   @default(false)
   status         Boolean   @default(true)
+  
+  // Profile fields
+  name           String?   // We can deprecate this in favor of firstName/lastName
+  firstName      String?
+  lastName       String?
+  profilePicUrl  String?
+  phone          String?
+  
+  // Business fields
+  businessName   String?
+  logoUrl        String?
+  address        Json?     // Flexible JSON for address structure
+  website        String?
+  taxId          String?
+  
+  // Invoice defaults
+  defaultCurrency      String        @default("USD")
+  defaultPaymentTerms  PaymentTerms  @default(NET_30)
+  defaultTaxRate       Decimal       @default(0) @db.Decimal(5, 2)
+  
+  // Stripe integration
+  stripeAccountId   String?
+  stripeCustomerId  String?
+  
+  // Email verification
+  emailVerificationToken String?
+  
+  // Password reset
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+  
+  // Subscription
+  subscriptionTier   SubscriptionTier   @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  
+  // Timestamps
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   
   // Relations
   roles          UserRole[]
   keystores      Keystore[]
+  clients        Client[]
+  invoices       Invoice[]
+  expenses       Expense[]
+  payments       Payment[]
+  emailLogs      EmailLog[]
+  subscriptions  Subscription[]
   
+  @@index([email])
+  @@index([stripeCustomerId])
   @@map("users")
 }
 
@@ -55,10 +173,11 @@ model UserRole {
   role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   
   @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
   @@map("user_roles")
 }
 
-// Keystore Model
 model Keystore {
   id           String   @id @default(uuid())
   userId       String
@@ -77,7 +196,6 @@ model Keystore {
   @@map("keystores")
 }
 
-// ApiKey Model
 model ApiKey {
   id          String   @id @default(uuid())
   key         String   @unique
@@ -90,4 +208,216 @@ model ApiKey {
   
   @@index([key, status])
   @@map("api_keys")
+}
+
+// ============================================
+// CLIENT MANAGEMENT
+// ============================================
+
+model Client {
+  id             String       @id @default(uuid())
+  userId         String
+  
+  companyName    String
+  contactName    String?
+  email          String?
+  phone          String?
+  billingAddress Json?
+  paymentTerms   PaymentTerms @default(NET_30)
+  currency       String       @default("USD")
+  notes          String?      @db.Text
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  // Relations
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  
+  @@index([userId])
+  @@index([userId, email])
+  @@map("clients")
+}
+
+// ============================================
+// INVOICE MANAGEMENT
+// ============================================
+
+model Invoice {
+  id             String        @id @default(uuid())
+  userId         String
+  clientId       String
+  
+  invoiceNumber  String        // Unique per user, not globally unique
+  status         InvoiceStatus @default(DRAFT)
+  
+  issueDate      DateTime      @db.Date
+  dueDate        DateTime      @db.Date
+  
+  subtotal       Decimal       @db.Decimal(10, 2)
+  taxRate        Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount      Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  currency       String        @default("USD")
+  
+  notes          String?       @db.Text
+  terms          String?       @db.Text
+  pdfUrl         String?
+  
+  sentAt              DateTime?
+  paidAt              DateTime?
+  lastReminderSentAt  DateTime?
+  reminderCount       Int       @default(0)
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  
+  // Relations
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client         Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  lineItems      InvoiceLineItem[]
+  payments       Payment[]
+  emailLogs      EmailLog[]
+  
+  @@unique([userId, invoiceNumber])
+  @@index([userId])
+  @@index([clientId])
+  @@index([userId, status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  
+  description String   @db.Text
+  quantity    Decimal  @db.Decimal(10, 2)
+  rate        Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2) // quantity × rate
+  order       Int      // For ordering line items
+  
+  createdAt   DateTime @default(now())
+  
+  // Relations
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+// ============================================
+// EXPENSE TRACKING
+// ============================================
+
+model Expense {
+  id             String          @id @default(uuid())
+  userId         String
+  
+  date           DateTime        @db.Date
+  vendor         String
+  amount         Decimal         @db.Decimal(10, 2)
+  currency       String          @default("USD")
+  category       ExpenseCategory
+  description    String?         @db.Text
+  taxDeductible  Boolean         @default(false)
+  receiptUrl     String?
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  
+  // Relations
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([userId, date])
+  @@index([userId, category])
+  @@map("expenses")
+}
+
+// ============================================
+// PAYMENT TRACKING
+// ============================================
+
+model Payment {
+  id                    String        @id @default(uuid())
+  invoiceId             String
+  userId                String
+  
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @default("USD")
+  paymentMethod         PaymentMethod
+  stripePaymentIntentId String?
+  status                PaymentStatus @default(PENDING)
+  
+  paidAt                DateTime?
+  notes                 String?       @db.Text
+  
+  createdAt             DateTime      @default(now())
+  
+  // Relations
+  invoice               Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([invoiceId])
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@map("payments")
+}
+
+// ============================================
+// EMAIL LOGGING
+// ============================================
+
+model EmailLog {
+  id         String      @id @default(uuid())
+  userId     String
+  invoiceId  String?
+  
+  type       EmailType
+  recipient  String
+  subject    String
+  status     EmailStatus @default(QUEUED)
+  
+  sentAt     DateTime?
+  error      String?     @db.Text
+  
+  createdAt  DateTime    @default(now())
+  
+  // Relations
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice    Invoice?    @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([invoiceId])
+  @@index([type])
+  @@index([status])
+  @@map("email_logs")
+}
+
+// ============================================
+// SUBSCRIPTION MANAGEMENT
+// ============================================
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String
+  
+  stripeSubscriptionId String             @unique
+  tier                 SubscriptionTier
+  status               SubscriptionStatus
+  
+  currentPeriodStart   DateTime           @db.Date
+  currentPeriodEnd     DateTime           @db.Date
+  cancelAtPeriodEnd    Boolean            @default(false)
+  
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  
+  // Relations
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+  @@map("subscriptions")
 }
