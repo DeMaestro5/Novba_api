@@ -1,8 +1,6 @@
 import prisma from '../index';
-import { User, Role } from '@prisma/client';
-
-// Type for User with roles
-type UserWithRoles = User & { roles: { role: Role }[] };
+import { User } from '@prisma/client';
+import { UserWithRoles } from '../types';
 
 async function exists(id: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
@@ -45,9 +43,10 @@ async function create(
     name?: string;
     email: string;
     password: string;
+    profilePicUrl?: string;
   },
   roleCode: string,
-): Promise<User> {
+): Promise<UserWithRoles> {
   // find the role
   const role = await prisma.role.findUnique({
     where: { code: roleCode },
@@ -61,12 +60,28 @@ async function create(
       name: userData.name,
       email: userData.email,
       password: userData.password,
+      profilePicUrl: userData.profilePicUrl,
       roles: {
         create: {
           roleId: role.id,
         },
       },
     },
+    include: {
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  });
+}
+
+async function findPrivateProfileById(
+  id: string,
+): Promise<UserWithRoles | null> {
+  return prisma.user.findUnique({
+    where: { id, status: true },
     include: {
       roles: {
         include: {
@@ -91,6 +106,7 @@ export default {
   exists,
   findById,
   findByEmail,
+  findPrivateProfileById,
   create,
   updateInfo,
 };

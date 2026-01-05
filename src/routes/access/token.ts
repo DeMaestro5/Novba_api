@@ -1,7 +1,6 @@
 import express from 'express';
 import { TokenRefreshResponse } from '../../core/ApiResponse';
 import { ProtectedRequest } from 'app-request';
-import { Types } from 'mongoose';
 import UserRepo from '../../database/repository/UserRepo';
 import { AuthFailureError } from '../../core/ApiError';
 import JWT from '../../core/JWT';
@@ -28,9 +27,8 @@ router.post(
     const accessTokenPayload = await JWT.decode(req.accessToken);
     validateTokenData(accessTokenPayload);
 
-    const user = await UserRepo.findById(
-      new Types.ObjectId(accessTokenPayload.sub),
-    );
+    // payload.sub is now a UUID string (Prisma User.id), not ObjectId
+    const user = await UserRepo.findById(accessTokenPayload.sub);
     if (!user) throw new AuthFailureError('User not registered');
     req.user = user;
 
@@ -40,19 +38,22 @@ router.post(
     if (accessTokenPayload.sub !== refreshTokenPayload.sub)
       throw new AuthFailureError('Invalid access token');
 
+    // KeystoreRepo.find expects userId (string) and keys (strings)
     const keystore = await KeystoreRepo.find(
-      req.user,
+      req.user.id,
       accessTokenPayload.prm,
       refreshTokenPayload.prm,
     );
 
     if (!keystore) throw new AuthFailureError('Invalid access token');
-    await KeystoreRepo.remove(keystore._id);
+    // KeystoreRepo.remove expects id (string), not _id
+    await KeystoreRepo.remove(keystore.id);
 
     const accessTokenKey = crypto.randomBytes(64).toString('hex');
     const refreshTokenKey = crypto.randomBytes(64).toString('hex');
 
-    await KeystoreRepo.create(req.user, accessTokenKey, refreshTokenKey);
+    // KeystoreRepo.create expects userId (string), not user object
+    await KeystoreRepo.create(req.user.id, accessTokenKey, refreshTokenKey);
     const tokens = await createTokens(
       req.user,
       accessTokenKey,

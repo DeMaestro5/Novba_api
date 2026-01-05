@@ -1,7 +1,6 @@
 import Joi from 'joi';
 import { Request, Response, NextFunction } from 'express';
 import { BadRequestError } from '../core/ApiError';
-import { Types } from 'mongoose';
 
 export enum ValidationSource {
   BODY = 'body',
@@ -10,11 +9,18 @@ export enum ValidationSource {
   PARAM = 'params',
 }
 
+// UUID validator for Prisma (replaces JoiObjectId)
+export const JoiUuid = () =>
+  Joi.string().uuid({ version: 'uuidv4' }).messages({
+    'string.guid': 'Invalid UUID format',
+  });
+
+// Keep JoiObjectId for backward compatibility, but it now validates UUIDs
+// This allows gradual migration - old code using JoiObjectId will work with UUIDs
 export const JoiObjectId = () =>
-  Joi.string().custom((value: string, helpers) => {
-    if (!Types.ObjectId.isValid(value)) return helpers.error('any.invalid');
-    return value;
-  }, 'Object Id Validation');
+  Joi.string().uuid({ version: 'uuidv4' }).messages({
+    'string.guid': 'Invalid ID format',
+  });
 
 export const JoiUrlEndpoint = () =>
   Joi.string().custom((value: string, helpers) => {

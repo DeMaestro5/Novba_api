@@ -1,10 +1,7 @@
 import Joi from 'joi';
-import { JoiObjectId } from '../../helpers/validator';
-
+// Note: JoiObjectId is now a UUID validator, but profile routes don't need userId param
+// since we use req.user.id from authentication middleware
 export default {
-  userId: Joi.object().keys({
-    id: JoiObjectId().required(),
-  }),
   profile: Joi.object().keys({
     name: Joi.string().min(1).max(200).optional(),
     profilePicUrl: Joi.string().uri().optional(),

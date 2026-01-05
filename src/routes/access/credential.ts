@@ -3,13 +3,12 @@ import { SuccessResponse } from '../../core/ApiResponse';
 import { RoleRequest } from 'app-request';
 import UserRepo from '../../database/repository/UserRepo';
 import { BadRequestError } from '../../core/ApiError';
-import User from '../../database/model/User';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import bcrypt from 'bcrypt';
 import _ from 'lodash';
-import { RoleCode } from '../../database/model/Role';
+import { RoleCode } from '../../database/types';
 import role from '../../helpers/role';
 import authorization from '../../auth/authorization';
 import authentication from '../../auth/authentication';
@@ -30,16 +29,17 @@ router.post(
 
     const passwordHash = await bcrypt.hash(req.body.password, 10);
 
-    await UserRepo.updateInfo({
-      _id: user._id,
+    // UserRepo.updateInfo expects id (string) and data (Partial<User>)
+    await UserRepo.updateInfo(user.id, {
       password: passwordHash,
-    } as User);
+    });
 
-    await KeystoreRepo.removeAllForClient(user);
+    // KeystoreRepo.removeAllForClient expects userId (string), not user object
+    await KeystoreRepo.removeAllForClient(user.id);
 
     new SuccessResponse(
       'User password updated',
-      _.pick(user, ['_id', 'name', 'email']),
+      _.pick(user, ['id', 'name', 'email']), // Use 'id' instead of '_id'
     ).send(res);
   }),
 );
