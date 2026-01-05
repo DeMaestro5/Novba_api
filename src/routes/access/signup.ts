@@ -16,7 +16,7 @@ import KeystoreRepo from '../../database/repository/KeystoreRepo';
 const router = express.Router();
 
 router.post(
-  '/basic',
+  '/',
   validator(schema.signup),
   asyncHandler(async (req: RoleRequest, res) => {
     const user = await UserRepo.findByEmail(req.body.email);
@@ -53,6 +53,47 @@ router.post(
 
     new SuccessResponse('Signup Successful', {
       user: userData,
+      tokens: tokens,
+    }).send(res);
+  }),
+);
+
+router.post(
+  '/admin',
+  validator(schema.signup),
+  asyncHandler(async (req: RoleRequest, res) => {
+    const admin = await UserRepo.findByEmail(req.body.email);
+    if (admin) throw new BadRequestError('Admin already registered');
+
+    const accessTokenKey = crypto.randomBytes(64).toString('hex');
+    const refreshTokenKey = crypto.randomBytes(64).toString('hex');
+    const passwordHash = await bcrypt.hash(req.body.password, 10);
+
+    const createdAdmin = await UserRepo.create(
+      {
+        name: req.body.name,
+        email: req.body.email,
+        profilePicUrl: req.body.profilePicUrl,
+        password: passwordHash,
+      },
+      RoleCode.ADMIN,
+    );
+
+    const keystore = await KeystoreRepo.create(
+      createdAdmin.id,
+      accessTokenKey,
+      refreshTokenKey,
+    );
+
+    const tokens = await createTokens(
+      createdAdmin,
+      keystore.primaryKey,
+      keystore.secondaryKey,
+    );
+    const adminData = await getUserData(createdAdmin);
+
+    new SuccessResponse('Admin Signup Successful', {
+      admin: adminData,
       tokens: tokens,
     }).send(res);
   }),

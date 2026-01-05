@@ -15,7 +15,7 @@ import { PublicRequest } from '../../types/app-request';
 const router = express.Router();
 
 router.post(
-  '/basic',
+  '/',
   validator(schema.credential),
   asyncHandler(async (req: PublicRequest, res) => {
     const user = await UserRepo.findByEmail(req.body.email);
