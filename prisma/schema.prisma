@@ -24,7 +24,7 @@ enum PaymentTerms {
 enum SubscriptionTier {
   FREE
   PRO
-  BUSINESS
+  STUDIO
 }
 
 enum SubscriptionStatus {
@@ -32,6 +32,7 @@ enum SubscriptionStatus {
   CANCELLED
   PAST_DUE
   UNPAID
+  TRIALING
 }
 
 enum InvoiceStatus {
@@ -40,6 +41,7 @@ enum InvoiceStatus {
   PAID
   OVERDUE
   CANCELLED
+  PARTIALLY_PAID
 }
 
 enum PaymentMethod {
@@ -47,6 +49,8 @@ enum PaymentMethod {
   BANK_TRANSFER
   CASH
   CHECK
+  MOBILE_MONEY
+  CRYPTO
   OTHER
 }
 
@@ -67,6 +71,8 @@ enum ExpenseCategory {
   MARKETING
   PROFESSIONAL_SERVICES
   RENT
+  INSURANCE
+  TAXES
   OTHER
 }
 
@@ -76,12 +82,14 @@ enum EmailType {
   PAYMENT_RECEIVED
   VERIFICATION
   PASSWORD_RESET
+  WELCOME
 }
 
 enum EmailStatus {
   QUEUED
   SENT
   FAILED
+  BOUNCED
 }
 
 // ============================================
@@ -95,7 +103,6 @@ model Role {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   users UserRole[]
 
   @@map("roles")
@@ -104,51 +111,50 @@ model Role {
 model User {
   id             String    @id @default(uuid())
   
-  // Authentication fields (existing)
   email          String    @unique
-  password       String?   // Keep as password or rename to passwordHash
+  password       String?
   verified       Boolean   @default(false)
   status         Boolean   @default(true)
   
-  // Profile fields
-  name           String?   // We can deprecate this in favor of firstName/lastName
+  name           String?
   firstName      String?
   lastName       String?
   profilePicUrl  String?
   phone          String?
   
-  // Business fields
   businessName   String?
   logoUrl        String?
-  address        Json?     // Flexible JSON for address structure
+  address        Json?
   website        String?
   taxId          String?
   
-  // Invoice defaults
   defaultCurrency      String        @default("USD")
   defaultPaymentTerms  PaymentTerms  @default(NET_30)
   defaultTaxRate       Decimal       @default(0) @db.Decimal(5, 2)
   
-  // Stripe integration
   stripeAccountId   String?
   stripeCustomerId  String?
   
-  // Email verification
   emailVerificationToken String?
   
-  // Password reset
   passwordResetToken   String?
   passwordResetExpires DateTime?
   
-  // Subscription
   subscriptionTier   SubscriptionTier   @default(FREE)
   subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  trialEndsAt        DateTime?
   
-  // Timestamps
+  onboardingCompleted Boolean @default(false)
+  onboardingStep      Int     @default(0)
+  
+  averageHourlyRate Decimal? @db.Decimal(10, 2)
+  industry          String?
+  experienceLevel   String?
+  
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  lastLoginAt    DateTime? 
   
-  // Relations
   roles          UserRole[]
   keystores      Keystore[]
   clients        Client[]
@@ -160,6 +166,7 @@ model User {
   
   @@index([email])
   @@index([stripeCustomerId])
+  @@index([subscriptionTier, subscriptionStatus])
   @@map("users")
 }
 
@@ -187,12 +194,10 @@ model Keystore {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
-  // Relations
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
   @@index([userId, primaryKey, status])
-  @@index([userId, primaryKey, secondaryKey])
   @@map("keystores")
 }
 
@@ -230,7 +235,6 @@ model Client {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
-  // Relations
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   invoices       Invoice[]
   
@@ -248,7 +252,7 @@ model Invoice {
   userId         String
   clientId       String
   
-  invoiceNumber  String        // Unique per user, not globally unique
+  invoiceNumber  String
   status         InvoiceStatus @default(DRAFT)
   
   issueDate      DateTime      @db.Date
@@ -272,7 +276,6 @@ model Invoice {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   
-  // Relations
   user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   client         Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
   lineItems      InvoiceLineItem[]
@@ -283,7 +286,7 @@ model Invoice {
   @@index([userId])
   @@index([clientId])
   @@index([userId, status])
-  @@index([dueDate])
+  @@index([status, dueDate])
   @@map("invoices")
 }
 
@@ -294,12 +297,11 @@ model InvoiceLineItem {
   description String   @db.Text
   quantity    Decimal  @db.Decimal(10, 2)
   rate        Decimal  @db.Decimal(10, 2)
-  amount      Decimal  @db.Decimal(10, 2) // quantity × rate
-  order       Int      // For ordering line items
+  amount      Decimal  @db.Decimal(10, 2)
+  order       Int
   
   createdAt   DateTime @default(now())
   
-  // Relations
   invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   
   @@index([invoiceId])
@@ -326,7 +328,6 @@ model Expense {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   
-  // Relations
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
@@ -355,7 +356,6 @@ model Payment {
   
   createdAt             DateTime      @default(now())
   
-  // Relations
   invoice               Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   
@@ -384,7 +384,6 @@ model EmailLog {
   
   createdAt  DateTime    @default(now())
   
-  // Relations
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   invoice    Invoice?    @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   
@@ -414,7 +413,6 @@ model Subscription {
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   
-  // Relations
   user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
