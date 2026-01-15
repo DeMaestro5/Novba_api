@@ -49,6 +49,8 @@ export abstract class ApiError extends Error {
         return new BadRequestResponse(err.message).send(res);
       case ErrorType.FORBIDDEN:
         return new ForbiddenResponse(err.message).send(res);
+      case ErrorType.TOO_MANY_REQUESTS:
+        return new BadRequestResponse(err.message).send(res);
       default: {
         let message = err.message;
         // Do not send failure message in production as it may send sensitive data

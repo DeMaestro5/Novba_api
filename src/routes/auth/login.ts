@@ -11,11 +11,13 @@ import asyncHandler from '../../helpers/asyncHandler';
 import bcrypt from 'bcrypt';
 import { getUserData } from './utils';
 import { PublicRequest } from '../../types/app-request';
+import { loginLimiter } from '../../helpers/rateLimiters';
 
 const router = express.Router();
 
 router.post(
   '/',
+  loginLimiter,
   validator(schema.credential),
   asyncHandler(async (req: PublicRequest, res) => {
     const user = await UserRepo.findByEmail(req.body.email);

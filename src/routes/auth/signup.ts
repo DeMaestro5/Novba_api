@@ -9,6 +9,7 @@ import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import bcrypt from 'bcrypt';
+import logger from '../../core/Logger';
 import { RoleCode } from '../../database/types';
 import { getUserData } from './utils';
 import KeystoreRepo from '../../database/repository/KeystoreRepo';
@@ -17,11 +18,13 @@ import {
   generateVerificationToken,
 } from '../../core/token';
 import { sendVerificationEmail } from '../../services/Email.service';
+import { signupLimiter } from '../../helpers/rateLimiters';
 
 const router = express.Router();
 
 router.post(
   '/',
+  signupLimiter,
   validator(schema.signup),
   asyncHandler(async (req: RoleRequest, res) => {
     const user = await UserRepo.findByEmail(req.body.email);
@@ -50,11 +53,18 @@ router.post(
     );
 
     //  Send verification email
-    await sendVerificationEmail(
+    const emailSent = await sendVerificationEmail(
       createdUser.email,
       createdUser.name,
       verificationToken,
     );
+
+    if (!emailSent) {
+      logger.error('Failed to send verification email during signup', {
+        userId: createdUser.id,
+        email: createdUser.email,
+      });
+    }
 
     new SuccessResponse(
       'Registration successful! Please check your email to verify your account.',
