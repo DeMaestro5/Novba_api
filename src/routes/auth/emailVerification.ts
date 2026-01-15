@@ -11,12 +11,20 @@ import {
   generateTokenExpiry,
   generateVerificationToken,
 } from '../../core/token';
-import { sendVerificationEmail } from '../../services/Email.service';
+import {
+  sendVerificationEmail,
+  sendWelcomeEmail,
+} from '../../services/Email.service';
+import {
+  resendVerificationLimiter,
+  verifyEmailLimiter,
+} from '../../helpers/rateLimiters';
 
 const router = express.Router();
 
 router.post(
   '/verify-email',
+  verifyEmailLimiter,
   validator(schema.emailVerification),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const { token } = req.body;
@@ -62,7 +70,17 @@ router.post(
       email: user.email,
     });
 
-    // 5. Send success response
+    // 5. Send welcome email (fire and forget - don't block response)
+    sendWelcomeEmail(user.email, user.name || user.firstName).catch((error) => {
+      // Log but don't fail the verification if welcome email fails
+      logger.error('Failed to send welcome email', {
+        userId: user.id,
+        email: user.email,
+        error,
+      });
+    });
+
+    // 6. Send success response
     return new SuccessResponse(
       'Email verified successfully! You can now log in.',
       {
@@ -75,6 +93,7 @@ router.post(
 
 router.post(
   '/resend-verification',
+  resendVerificationLimiter,
   validator(schema.resendVerification),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const { email } = req.body;

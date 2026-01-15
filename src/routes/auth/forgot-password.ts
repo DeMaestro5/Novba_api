@@ -6,8 +6,10 @@ import validator from '../../helpers/validator';
 import crypto from 'crypto';
 import { sendPasswordResetEmail } from '../../services/Email.service';
 import logger from '../../core/Logger';
+import { forgotPasswordLimiter } from '../../helpers/rateLimiters';
 
 export default [
+  forgotPasswordLimiter,
   validator(schema.forgotPassword),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -35,7 +37,18 @@ export default [
       });
 
       // Send Password reset email
-      await sendPasswordResetEmail(user.email, user.name, resetToken);
+      const emailSent = await sendPasswordResetEmail(
+        user.email,
+        user.name,
+        resetToken,
+      );
+
+      if (!emailSent) {
+        logger.error('Failed to send password reset email', {
+          userId: user.id,
+          email: user.email,
+        });
+      }
       new SuccessResponse(genericMessage, {}).send(res);
     } catch (error) {
       next(error);
