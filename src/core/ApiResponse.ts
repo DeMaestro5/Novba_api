@@ -15,6 +15,7 @@ enum ResponseStatus {
   FORBIDDEN = 403,
   NOT_FOUND = 404,
   INTERNAL_ERROR = 500,
+  TOO_MANY_REQUESTS = 429,
 }
 
 abstract class ApiResponse {
@@ -97,7 +98,10 @@ export class FailureMsgResponse extends ApiResponse {
 }
 
 export class SuccessResponse<T> extends ApiResponse {
-  constructor(message: string, private data: T) {
+  constructor(
+    message: string,
+    private data: T,
+  ) {
     super(StatusCode.SUCCESS, ResponseStatus.SUCCESS, message);
   }
 

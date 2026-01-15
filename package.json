@@ -32,7 +32,8 @@
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "express": "^4.18.2",
+    "express": "^4.22.1",
+    "express-rate-limit": "^8.2.1",
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
@@ -43,6 +44,7 @@
     "nodemailer": "^7.0.12",
     "qs": "^6.11.2",
     "redis": "^4.6.12",
+    "resend": "^6.7.0",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1"
   },

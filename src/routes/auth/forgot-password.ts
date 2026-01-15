@@ -5,7 +5,7 @@ import UserRepo from '../../database/repository/UserRepo';
 import schema from './schema';
 import validator from '../../helpers/validator';
 import crypto from 'crypto';
-import { sendEmail } from '../../helpers/email';
+import { sendPasswordResetEmail } from '../../services/Email.service';
 
 export default [
   validator(schema.forgotPassword),
@@ -29,24 +29,8 @@ export default [
         passwordResetExpires: new Date(resetTokenExpiry),
       });
 
-      // Create reset URL
-      const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-      // Send email
-      await sendEmail({
-        to: email,
-        subject: 'Password Reset Request',
-        html: `
-          <h1>Password Reset Request</h1>
-          <p>You requested a password reset. Here is your reset token:</p>
-          <p><strong>${resetToken}</strong></p>
-          <p>Or click the link below to reset your password:</p>
-          <a href="${resetUrl}">Reset Password</a>
-          <p>This token will expire in 1 hour.</p>
-          <p>If you didn't request this, please ignore this email.</p>
-        `,
-      });
-
+      // Send Password reset email
+      await sendPasswordResetEmail(user.email, user.name, resetToken);
       new SuccessResponse('Password reset email sent', {}).send(res);
     } catch (error) {
       next(error);

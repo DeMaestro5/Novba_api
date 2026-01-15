@@ -12,6 +12,8 @@ import bcrypt from 'bcrypt';
 import { RoleCode } from '../../database/types';
 import { getUserData } from './utils';
 import KeystoreRepo from '../../database/repository/KeystoreRepo';
+import { generateVerificationToken } from '../../core/token';
+import { sendVerificationEmail } from '../../services/Email.service';
 
 const router = express.Router();
 
@@ -22,9 +24,8 @@ router.post(
     const user = await UserRepo.findByEmail(req.body.email);
     if (user) throw new BadRequestError('User already registered');
 
-    const accessTokenKey = crypto.randomBytes(64).toString('hex');
-    const refreshTokenKey = crypto.randomBytes(64).toString('hex');
     const passwordHash = await bcrypt.hash(req.body.password, 10);
+    const verificationToken = generateVerificationToken();
 
     // UserRepo.create returns UserWithRoles (includes roles)
     const createdUser = await UserRepo.create(
@@ -37,24 +38,26 @@ router.post(
       RoleCode.USER,
     );
 
-    // Create keystore separately (Prisma approach)
-    const keystore = await KeystoreRepo.create(
-      createdUser.id, // Use Prisma User.id (string UUID)
-      accessTokenKey,
-      refreshTokenKey,
+    // Save verification token
+    await UserRepo.setEmailVerificationToken(
+      createdUser.email,
+      verificationToken,
     );
 
-    const tokens = await createTokens(
-      createdUser, // Now properly typed as UserWithRoles
-      keystore.primaryKey,
-      keystore.secondaryKey,
+    //  Send verification email
+    await sendVerificationEmail(
+      createdUser.email,
+      createdUser.name,
+      verificationToken,
     );
-    const userData = await getUserData(createdUser);
 
-    new SuccessResponse('Signup Successful', {
-      user: userData,
-      tokens: tokens,
-    }).send(res);
+    new SuccessResponse(
+      'Registration successful! Please check your email to verify your account.',
+      {
+        email: createdUser.email,
+        verified: false,
+      },
+    ).send(res);
   }),
 );
 

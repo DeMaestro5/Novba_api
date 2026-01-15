@@ -22,6 +22,12 @@ router.post(
     if (!user) throw new BadRequestError('User not registered');
     if (!user.password) throw new BadRequestError('Credential not set');
 
+    if (!user.verified) {
+      throw new AuthFailureError(
+        'Please verify your email before logging in. Check your inbox for the verification link.',
+      );
+    }
+
     const match = await bcrypt.compare(req.body.password, user.password);
     if (!match) throw new AuthFailureError('Authentication failure');
 
