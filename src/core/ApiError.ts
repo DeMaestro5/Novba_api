@@ -20,10 +20,14 @@ export enum ErrorType {
   NO_DATA = 'NoDataError',
   BAD_REQUEST = 'BadRequestError',
   FORBIDDEN = 'ForbiddenError',
+  TOO_MANY_REQUESTS = 'TooManyRequestsError',
 }
 
 export abstract class ApiError extends Error {
-  constructor(public type: ErrorType, public message: string = 'error') {
+  constructor(
+    public type: ErrorType,
+    public message: string = 'error',
+  ) {
     super(type);
   }
 
@@ -58,6 +62,11 @@ export abstract class ApiError extends Error {
 export class AuthFailureError extends ApiError {
   constructor(message = 'Invalid Credentials') {
     super(ErrorType.UNAUTHORIZED, message);
+  }
+}
+export class TooManyRequestsError extends ApiError {
+  constructor(message: string = 'Too many requests') {
+    super(ErrorType.TOO_MANY_REQUESTS, message);
   }
 }
 

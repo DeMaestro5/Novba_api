@@ -28,4 +28,11 @@ export default {
     token: Joi.string().required(),
     password: Joi.string().min(6).required(),
   }),
+  emailVerification: Joi.object().keys({
+    token: Joi.string().required().min(32).max(128).trim(),
+  }),
+
+  resendVerification: Joi.object().keys({
+    email: Joi.string().required().email().lowercase().trim(),
+  }),
 };
