@@ -10,6 +10,7 @@ import credential from './auth/credential';
 import profile from './profile';
 import forgotPassword from './auth/forgot-password';
 import resetPassword from './auth/reset-password';
+import emailVerification from './auth/emailVerification';
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.use('/logout', logout);
 router.use('/token', token);
 router.use('/credential', credential);
 router.use('/profile', profile);
+router.use('/', emailVerification);
 router.use('/forgot-password', forgotPassword);
 router.use('/reset-password', resetPassword);
 
