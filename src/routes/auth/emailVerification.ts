@@ -7,7 +7,10 @@ import { SuccessResponse } from '../../core/ApiResponse';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import { ProtectedRequest } from '../../types/app-request';
-import { generateVerificationToken } from '../../core/token';
+import {
+  generateTokenExpiry,
+  generateVerificationToken,
+} from '../../core/token';
 import { sendVerificationEmail } from '../../services/Email.service';
 
 const router = express.Router();
@@ -111,9 +114,14 @@ router.post(
 
     // 3. Generate new verification token
     const verificationToken = generateVerificationToken();
+    const verificationTokenExpiry = generateTokenExpiry(24);
 
     // 4. Save token to database
-    await UserRepo.setEmailVerificationToken(email, verificationToken);
+    await UserRepo.setEmailVerificationToken(
+      email,
+      verificationToken,
+      verificationTokenExpiry,
+    );
 
     logger.info('New verification token generated', {
       userId: user.id,
@@ -145,3 +153,5 @@ router.post(
     }).send(res);
   }),
 );
+
+export default router;

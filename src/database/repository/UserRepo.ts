@@ -90,6 +90,9 @@ async function findByEmailVerificationToken(
   return prisma.user.findFirst({
     where: {
       emailVerificationToken: token,
+      emailVerificationTokenExpires: {
+        gte: new Date(),
+      },
       status: true,
     },
     include: {
@@ -216,11 +219,13 @@ async function setPasswordResetToken(
 async function setEmailVerificationToken(
   email: string,
   token: string,
+  expiresAt: Date,
 ): Promise<User> {
   return prisma.user.update({
     where: { email },
     data: {
       emailVerificationToken: token,
+      emailVerificationTokenExpires: expiresAt,
       updatedAt: new Date(),
     },
   });
@@ -235,6 +240,7 @@ async function verifyEmail(id: string): Promise<User> {
     data: {
       verified: true,
       emailVerificationToken: null,
+      emailVerificationTokenExpires: null,
       updatedAt: new Date(),
     },
   });

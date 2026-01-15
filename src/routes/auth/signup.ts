@@ -12,7 +12,10 @@ import bcrypt from 'bcrypt';
 import { RoleCode } from '../../database/types';
 import { getUserData } from './utils';
 import KeystoreRepo from '../../database/repository/KeystoreRepo';
-import { generateVerificationToken } from '../../core/token';
+import {
+  generateTokenExpiry,
+  generateVerificationToken,
+} from '../../core/token';
 import { sendVerificationEmail } from '../../services/Email.service';
 
 const router = express.Router();
@@ -26,6 +29,7 @@ router.post(
 
     const passwordHash = await bcrypt.hash(req.body.password, 10);
     const verificationToken = generateVerificationToken();
+    const verificationTokenExpiry = generateTokenExpiry(24);
 
     // UserRepo.create returns UserWithRoles (includes roles)
     const createdUser = await UserRepo.create(
@@ -42,6 +46,7 @@ router.post(
     await UserRepo.setEmailVerificationToken(
       createdUser.email,
       verificationToken,
+      verificationTokenExpiry,
     );
 
     //  Send verification email

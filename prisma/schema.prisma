@@ -136,6 +136,7 @@ model User {
   stripeCustomerId  String?
   
   emailVerificationToken String?
+  emailVerificationTokenExpires DateTime?
   
   passwordResetToken   String?
   passwordResetExpires DateTime?
