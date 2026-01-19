@@ -27,6 +27,15 @@ enum SubscriptionTier {
   STUDIO
 }
 
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  APPROVED
+  DECLINED
+  EXPIRED
+}
+
 enum SubscriptionStatus {
   ACTIVE
   CANCELLED
@@ -83,6 +92,7 @@ enum EmailType {
   VERIFICATION
   PASSWORD_RESET
   WELCOME
+  PROPOSAL_SENT 
 }
 
 enum EmailStatus {
@@ -159,6 +169,7 @@ model User {
   roles          UserRole[]
   keystores      Keystore[]
   clients        Client[]
+  proposals      Proposal[]
   invoices       Invoice[]
   expenses       Expense[]
   payments       Payment[]
@@ -238,6 +249,7 @@ model Client {
   
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   invoices       Invoice[]
+  proposals      Proposal[]
   
   @@index([userId])
   @@index([userId, email])
@@ -289,6 +301,66 @@ model Invoice {
   @@index([userId, status])
   @@index([status, dueDate])
   @@map("invoices")
+}
+
+// ============================================
+// PROPOSAL SYSTEM
+// ============================================
+
+model Proposal {
+  id             String         @id @default(uuid())
+  userId         String
+  clientId       String
+  
+  proposalNumber String
+  title          String
+  status         ProposalStatus @default(DRAFT)
+  
+  scope          String?        @db.Text
+  deliverables   Json?
+  timeline       Json?
+  terms          String?        @db.Text
+  
+  totalAmount    Decimal        @db.Decimal(10, 2)
+  currency       String         @default("USD")
+  
+  validUntil     DateTime?
+  sentAt         DateTime?
+  viewedAt       DateTime?
+  respondedAt    DateTime?
+  
+  pdfUrl         String?
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client         Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  lineItems      ProposalLineItem[]
+  
+  @@unique([userId, proposalNumber])
+  @@index([userId])
+  @@index([clientId])
+  @@index([userId, status])
+  @@map("proposals")
+}
+
+model ProposalLineItem {
+  id          String   @id @default(uuid())
+  proposalId  String
+  
+  description String   @db.Text
+  quantity    Decimal  @db.Decimal(10, 2)
+  rate        Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(10, 2)
+  order       Int
+  
+  createdAt   DateTime @default(now())
+  
+  proposal    Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  
+  @@index([proposalId])
+  @@map("proposal_line_items")
 }
 
 model InvoiceLineItem {

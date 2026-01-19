@@ -13,6 +13,7 @@ import resetPassword from './auth/reset-password';
 import emailVerification from './auth/emailVerification';
 import onboarding from './onboarding';
 import clients from './clients';
+import proposals from './proposals';
 
 const router = express.Router();
 
@@ -33,5 +34,6 @@ router.use('/forgot-password', forgotPassword);
 router.use('/reset-password', resetPassword);
 router.use('/onboarding', onboarding);
 router.use('/clients', clients);
+router.use('/proposals', proposals);
 
 export default router;
