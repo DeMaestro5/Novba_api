@@ -15,6 +15,7 @@ import onboarding from './onboarding';
 import clients from './clients';
 import proposals from './proposals';
 import contracts from './contracts';
+import projects from './projects';
 
 const router = express.Router();
 
@@ -37,5 +38,6 @@ router.use('/onboarding', onboarding);
 router.use('/clients', clients);
 router.use('/proposals', proposals);
 router.use('/contracts', contracts);
+router.use('/projects', projects);
 
 export default router;
