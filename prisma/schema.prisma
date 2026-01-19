@@ -44,6 +44,13 @@ enum SubscriptionStatus {
   TRIALING
 }
 
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
 enum ContractStatus {
   DRAFT
   SENT
@@ -183,6 +190,7 @@ model User {
   invoices       Invoice[]
   expenses       Expense[]
   payments       Payment[]
+  projects       Project[]
   emailLogs      EmailLog[]
   subscriptions  Subscription[]
   
@@ -261,6 +269,7 @@ model Client {
   invoices       Invoice[]
   proposals      Proposal[]
   contracts      Contract[]
+  projects       Project[]
   
   @@index([userId])
   @@index([userId, email])
@@ -291,6 +300,8 @@ model Invoice {
   notes          String?       @db.Text
   terms          String?       @db.Text
   pdfUrl         String?
+  projectId      String?
+
   
   sentAt              DateTime?
   paidAt              DateTime?
@@ -302,11 +313,13 @@ model Invoice {
   
   user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   client         Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   lineItems      InvoiceLineItem[]
   payments       Payment[]
   emailLogs      EmailLog[]
   
   @@unique([userId, invoiceNumber])
+  @@index([projectId])
   @@index([userId])
   @@index([clientId])
   @@index([userId, status])
@@ -341,6 +354,7 @@ model Proposal {
   respondedAt    DateTime?
 
   contract       Contract?
+  project        Project?
   
   pdfUrl         String?
   
@@ -392,6 +406,46 @@ model InvoiceLineItem {
   
   @@index([invoiceId])
   @@map("invoice_line_items")
+}
+
+// ============================================
+// PROJECT TRACKING
+// ============================================
+
+model Project {
+  id             String        @id @default(uuid())
+  userId         String
+  clientId       String
+  proposalId     String?       @unique
+  contractId     String?       @unique
+  
+  name           String
+  description    String?       @db.Text
+  status         ProjectStatus @default(ACTIVE)
+  
+  startDate      DateTime      @db.Date
+  endDate        DateTime?     @db.Date
+  
+  totalBudget    Decimal       @db.Decimal(10, 2)
+  currency       String        @default("USD")
+  
+  paymentPlan    Json?
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  proposal       Proposal?     @relation(fields: [proposalId], references: [id])
+  contract       Contract?     @relation(fields: [contractId], references: [id])
+  invoices       Invoice[]
+  
+  @@index([userId])
+  @@index([clientId])
+  @@index([proposalId])
+  @@index([contractId])
+  @@index([userId, status])
+  @@map("projects")
 }
 
 // ============================================
@@ -474,6 +528,8 @@ model Contract {
   
   startDate      DateTime?      @db.Date
   endDate        DateTime?      @db.Date
+
+  project        Project?
 
   
   pdfUrl         String?
