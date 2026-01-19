@@ -14,6 +14,7 @@ import emailVerification from './auth/emailVerification';
 import onboarding from './onboarding';
 import clients from './clients';
 import proposals from './proposals';
+import contracts from './contracts';
 
 const router = express.Router();
 
@@ -35,5 +36,6 @@ router.use('/reset-password', resetPassword);
 router.use('/onboarding', onboarding);
 router.use('/clients', clients);
 router.use('/proposals', proposals);
+router.use('/contracts', contracts);
 
 export default router;

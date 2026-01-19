@@ -44,6 +44,14 @@ enum SubscriptionStatus {
   TRIALING
 }
 
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  EXPIRED
+  TERMINATED
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -93,6 +101,7 @@ enum EmailType {
   PASSWORD_RESET
   WELCOME
   PROPOSAL_SENT 
+  CONTRACT_SIGNED
 }
 
 enum EmailStatus {
@@ -168,6 +177,7 @@ model User {
   
   roles          UserRole[]
   keystores      Keystore[]
+  contracts      Contract[]
   clients        Client[]
   proposals      Proposal[]
   invoices       Invoice[]
@@ -250,6 +260,7 @@ model Client {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   invoices       Invoice[]
   proposals      Proposal[]
+  contracts      Contract[]
   
   @@index([userId])
   @@index([userId, email])
@@ -328,6 +339,8 @@ model Proposal {
   sentAt         DateTime?
   viewedAt       DateTime?
   respondedAt    DateTime?
+
+  contract       Contract?
   
   pdfUrl         String?
   
@@ -436,6 +449,48 @@ model Payment {
   @@index([userId])
   @@index([stripePaymentIntentId])
   @@map("payments")
+}
+
+// ============================================
+// CONTRACT SYSTEM
+// ============================================
+
+model Contract {
+  id             String         @id @default(uuid())
+  userId         String
+  clientId       String
+  proposalId     String?        @unique
+  
+  contractNumber String
+  title          String
+  status         ContractStatus @default(DRAFT)
+  
+  templateType   String         // 'service_agreement', 'nda', 'sow', 'freelance', 'custom'
+  content        String         @db.Text
+  terms          Json?          // Contract terms as structured data
+  
+  signedAt       DateTime?
+  signatureUrl   String?        // E-signature image/PDF
+  
+  startDate      DateTime?      @db.Date
+  endDate        DateTime?      @db.Date
+
+  
+  pdfUrl         String?
+  
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client         Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  proposal       Proposal?      @relation(fields: [proposalId], references: [id])
+  
+  @@unique([userId, contractNumber])
+  @@index([userId])
+  @@index([clientId])
+  @@index([proposalId])
+  @@index([userId, status])
+  @@map("contracts")
 }
 
 // ============================================
