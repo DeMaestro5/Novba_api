@@ -16,6 +16,7 @@ import clients from './clients';
 import proposals from './proposals';
 import contracts from './contracts';
 import projects from './projects';
+import invoices from './invoices'
 
 const router = express.Router();
 
@@ -39,5 +40,6 @@ router.use('/clients', clients);
 router.use('/proposals', proposals);
 router.use('/contracts', contracts);
 router.use('/projects', projects);
+router.use('/invoices', invoices);
 
 export default router;
