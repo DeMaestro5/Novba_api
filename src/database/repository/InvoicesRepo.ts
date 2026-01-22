@@ -253,6 +253,25 @@ async function update(
 }
 
 /**
+ * Find invoice by ID (without user validation - for webhooks)
+ */
+async function findByIdPublic(id: string): Promise<any | null> {
+  return prisma.invoice.findUnique({
+    where: { id },
+    include: {
+      client: {
+        select: {
+          id: true,
+          companyName: true,
+          contactName: true,
+          email: true,
+        },
+      },
+    },
+  });
+}
+
+/**
  * Update invoice status
  */
 async function updateStatus(
@@ -570,6 +589,7 @@ async function findByIds(
 }
 
 export default {
+  findByIdPublic,
   existsForUser,
   findById,
   generateInvoiceNumber,

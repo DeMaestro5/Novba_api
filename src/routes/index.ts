@@ -18,6 +18,7 @@ import contracts from './contracts';
 import projects from './projects';
 import invoices from './invoices'
 import expenses from './expenses'
+import payments from './payments'
 
 const router = express.Router();
 
@@ -43,5 +44,6 @@ router.use('/contracts', contracts);
 router.use('/projects', projects);
 router.use('/invoices', invoices);
 router.use('/expenses', expenses);
+router.use('/payments', payments)
 
 export default router;
