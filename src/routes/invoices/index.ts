@@ -19,6 +19,7 @@ import {
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import { InvoiceStatus } from '@prisma/client';
+import paymentLink from './payment-link'
 
 const router = express.Router();
 
@@ -26,6 +27,8 @@ const router = express.Router();
 // All routes require authentication
 router.use(authentication);
 /*---------------------------------------------------------*/
+
+router.use('/', paymentLink);
 
 /**
  * GET /api/v1/invoices/overdue
