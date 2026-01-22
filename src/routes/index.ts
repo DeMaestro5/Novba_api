@@ -19,8 +19,12 @@ import projects from './projects';
 import invoices from './invoices'
 import expenses from './expenses'
 import payments from './payments'
+import stripeWebhook from './webhooks/stripe'
+import dashboard from './dashboard'
 
 const router = express.Router();
+
+router.use('/webhooks', stripeWebhook);
 
 /*---------------------------------------------------------*/
 router.use(apikey);
@@ -45,5 +49,6 @@ router.use('/projects', projects);
 router.use('/invoices', invoices);
 router.use('/expenses', expenses);
 router.use('/payments', payments)
+router.use('/dashboard', dashboard);
 
 export default router;
