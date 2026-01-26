@@ -21,6 +21,7 @@ import expenses from './expenses'
 import payments from './payments'
 import stripeWebhook from './webhooks/stripe'
 import dashboard from './dashboard'
+import pricing from './pricing'
 
 const router = express.Router();
 
@@ -50,5 +51,6 @@ router.use('/invoices', invoices);
 router.use('/expenses', expenses);
 router.use('/payments', payments)
 router.use('/dashboard', dashboard);
+router.use('/pricing', pricing);
 
 export default router;
