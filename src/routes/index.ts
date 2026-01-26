@@ -22,6 +22,9 @@ import payments from './payments'
 import stripeWebhook from './webhooks/stripe'
 import dashboard from './dashboard'
 import pricing from './pricing'
+import portfolio from './portfolio';
+import publicPortfolioLink from './portfolio/public'
+
 
 const router = express.Router();
 
@@ -52,5 +55,7 @@ router.use('/expenses', expenses);
 router.use('/payments', payments)
 router.use('/dashboard', dashboard);
 router.use('/pricing', pricing);
+router.use('/portfolio', portfolio);
+router.use('/', publicPortfolioLink) 
 
 export default router;

@@ -178,10 +178,21 @@ model User {
   industry          String?
   experienceLevel   String?
   
+  portfolioSlug     String?    @unique
+  portfolioTitle    String?
+  portfolioBio      String?    @db.Text
+  portfolioAvatar   String?
+  portfolioLocation String?
+  isAvailable       Boolean    @default(true)
+  linkedinUrl       String?
+  twitterUrl        String?
+  githubUrl         String?
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   lastLoginAt    DateTime? 
   
+  portfolio      Portfolio[]
   roles          UserRole[]
   keystores      Keystore[]
   contracts      Contract[]
@@ -389,6 +400,42 @@ model ProposalLineItem {
   @@index([proposalId])
   @@map("proposal_line_items")
 }
+
+model Portfolio {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title         String
+  slug          String    @unique
+  description   String    @db.Text
+  category      String
+  
+  imageUrl      String?
+  images        Json?     // Array of image URLs
+  
+  projectDate   DateTime
+  client        String?
+  technologies  Json?     // Array of technology strings
+  
+  liveUrl       String?
+  githubUrl     String?
+  caseStudy     String?   @db.Text
+  testimonial   String?   @db.Text
+  
+  isPublished   Boolean   @default(false)
+  order         Int       @default(0)
+  views         Int       @default(0)
+  
+  deletedAt     DateTime? // Soft delete
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([userId, deletedAt])
+  @@index([slug])
+  @@index([userId, isPublished, deletedAt])
+}
+
 
 model InvoiceLineItem {
   id          String   @id @default(uuid())
