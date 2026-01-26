@@ -8,8 +8,12 @@ import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import _ from 'lodash';
 import authentication from '../../auth/authentication';
+import portfolioProfile from './portfolioProfile'
+
 
 const router = express.Router();
+
+router.use('/', portfolioProfile)
 
 /*-------------------------------------------------------------------------*/
 router.use(authentication);
