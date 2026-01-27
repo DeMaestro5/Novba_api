@@ -24,6 +24,7 @@ import dashboard from './dashboard'
 import pricing from './pricing'
 import portfolio from './portfolio';
 import publicPortfolioLink from './portfolio/public'
+import settings from './settings'
 
 
 const router = express.Router();
@@ -57,5 +58,6 @@ router.use('/dashboard', dashboard);
 router.use('/pricing', pricing);
 router.use('/portfolio', portfolio);
 router.use('/', publicPortfolioLink) 
+router.use('/settings', settings);
 
 export default router;
