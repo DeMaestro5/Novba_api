@@ -19,6 +19,7 @@ enum PaymentTerms {
   NET_30
   NET_60
   DUE_ON_RECEIPT
+  CUSTOM
 }
 
 enum SubscriptionTier {
@@ -156,6 +157,7 @@ model User {
   
   defaultCurrency      String        @default("USD")
   defaultPaymentTerms  PaymentTerms  @default(NET_30)
+  defaultPaymentTermsCustom String?
   defaultTaxRate       Decimal       @default(0) @db.Decimal(5, 2)
   
   stripeAccountId   String?
@@ -191,6 +193,35 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   lastLoginAt    DateTime? 
+
+  // Business Settings
+  businessAddress     String?   @db.Text
+  businessCity        String?
+  businessState       String?
+  businessZipCode     String?
+  businessCountry     String?   @default("United States")
+  businessPhone       String?
+  businessEmail       String?
+  businessWebsite     String?
+  businessLogo        String?   // Logo URL
+  
+  // Invoice Defaults
+  defaultInvoiceNotes      String?   @db.Text
+  defaultInvoiceTerms      String?   @db.Text
+  invoiceNumberPrefix      String?   @default("INV")
+  nextInvoiceNumber        Int       @default(1)
+  
+  // Stripe Connect Settings
+  stripeAccountStatus      String?   // 'active', 'pending', 'disabled'
+  stripeOnboardingComplete Boolean   @default(false)
+  stripeChargesEnabled     Boolean   @default(false)
+  stripePayoutsEnabled     Boolean   @default(false)
+  stripeConnectedAt        DateTime?
+  
+  // User Preferences
+  timezone                 String?   @default("UTC")
+  dateFormat               String?   @default("MM/DD/YYYY")
+  language                 String?   @default("en")
   
   portfolio      Portfolio[]
   roles          UserRole[]
@@ -270,6 +301,7 @@ model Client {
   phone          String?
   billingAddress Json?
   paymentTerms   PaymentTerms @default(NET_30)
+  paymentTermsCustom String? 
   currency       String       @default("USD")
   notes          String?      @db.Text
   
