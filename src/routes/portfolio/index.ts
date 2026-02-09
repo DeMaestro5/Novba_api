@@ -11,6 +11,7 @@ import asyncHandler from '../../helpers/asyncHandler';
 import { formatPortfolioData } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
+import { checkUsageLimit } from '../../middleware/subscription-check';
 
 
 
@@ -87,6 +88,7 @@ router.get(
  */
 router.post(
   '/',
+  checkUsageLimit('portfolioItems'),
   validator(schema.create),
   asyncHandler(async (req: ProtectedRequest, res) => {
     // Check if slug is available

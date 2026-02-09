@@ -10,6 +10,7 @@ import { getProposalData, calculateTotal, generateProposalHTML } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import { ProposalStatus } from '@prisma/client';
+import { checkUsageLimit } from '../../middleware/subscription-check';
 
 const router = express.Router();
 
@@ -58,6 +59,7 @@ router.get(
  */
 router.post(
   '/',
+  checkUsageLimit('proposals'),
   validator(schema.create),
   asyncHandler(async (req: ProtectedRequest, res) => {
     // Verify client belongs to user

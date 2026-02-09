@@ -3,6 +3,7 @@ import { SuccessResponse } from '../../core/ApiResponse';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProjectRepo from '../../database/repository/ProjectRepo';
+import { checkUsageLimit } from '../../middleware/subscription-check';
 import {
   BadRequestError,
   NotFoundError,
@@ -97,6 +98,7 @@ router.get(
  */
 router.post(
   '/',
+  checkUsageLimit('invoices'),
   validator(schema.create),
   asyncHandler(async (req: ProtectedRequest, res) => {
     // Verify client belongs to user

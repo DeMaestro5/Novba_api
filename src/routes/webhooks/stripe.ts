@@ -1,127 +1,114 @@
 import express from 'express';
-import { SuccessResponse } from '../../core/ApiResponse';
+import Stripe from 'stripe';
 import PaymentRepo from '../../database/repository/PaymentRepo';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
-import { BadRequestError } from '../../core/ApiError';
-import asyncHandler from '../../helpers/asyncHandler';
-import { verifyStripeWebhook } from '../payments/utils';
-import { PaymentStatus, PaymentMethod } from '@prisma/client';
-import { calculateInvoiceStatus } from '../payments/utils';
-import { InvoiceStatus } from '@prisma/client';
 
 const router = express.Router();
 
 /**
  * POST /api/v1/webhooks/stripe
- * Handle Stripe webhook events
- * NOTE: This route does NOT use authentication middleware
+ * Handle Stripe payment webhook events (existing)
  */
 router.post(
   '/stripe',
-  express.raw({ type: 'application/json' }), // Parse raw body for signature verification
-  asyncHandler(async (req, res) => {
-    const signature = req.headers['stripe-signature'];
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const sig = req.headers['stripe-signature'] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-    if (!signature || typeof signature !== 'string') {
-      throw new BadRequestError('Missing Stripe signature');
+    if (!webhookSecret) {
+      console.error('Stripe webhook secret not configured');
+      return res.status(500).send('Webhook secret not configured');
     }
 
-    let event;
+    let event: Stripe.Event;
+
     try {
-      // Verify webhook signature
-      event = verifyStripeWebhook(req.body, signature);
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
     } catch (err: any) {
-      throw new BadRequestError(`Webhook Error: ${err.message}`);
+      console.error('Webhook signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
-    switch (event.type) {
-      case 'payment_intent.succeeded': {
-        const paymentIntent = event.data.object;
-        const invoiceId = paymentIntent.metadata.invoiceId;
+    console.log('Received Stripe webhook event:', event.type);
 
-        if (!invoiceId) {
-          console.error('Payment Intent missing invoiceId in metadata');
+    try {
+      // Handle payment-related events
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
           break;
-        }
 
-        // Check if payment already exists
-        const existingPayment = await PaymentRepo.findByStripePaymentIntent(
-          paymentIntent.id,
-        );
-
-        if (existingPayment) {
-          console.log(`Payment already recorded: ${paymentIntent.id}`);
+        case 'payment_intent.payment_failed':
+          await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
           break;
-        }
 
-        // Get invoice to get userId
-        const invoice = await InvoiceRepo.findByIdPublic(invoiceId); 
-        
-        if (!invoice) {
-          console.error(`Invoice not found: ${invoiceId}`);
-          break;
-        }
-
-        // Create payment record
-        const payment = await PaymentRepo.create({
-          invoiceId,
-          userId: invoice.userId,
-          amount: paymentIntent.amount / 100, // Convert from cents
-          currency: paymentIntent.currency.toUpperCase(),
-          paymentMethod: PaymentMethod.STRIPE,
-          stripePaymentIntentId: paymentIntent.id,
-          status: PaymentStatus.COMPLETED,
-          paidAt: new Date(),
-        });
-
-        // Update invoice status
-        const totalPaid = await PaymentRepo.getTotalPaidForInvoice(invoiceId);
-        const newInvoiceStatus = calculateInvoiceStatus(
-          Number(invoice.total),
-          totalPaid,
-        );
-
-        await InvoiceRepo.updateStatus(invoiceId, invoice.userId, newInvoiceStatus, {
-          paidAt: newInvoiceStatus === InvoiceStatus.PAID ? new Date() : undefined,
-        });
-
-        console.log(`Payment recorded successfully: ${payment.id}`);
-        break;
+        default:
+          console.log(`Unhandled payment event type: ${event.type}`);
       }
 
-      case 'payment_intent.payment_failed': {
-        const paymentIntent = event.data.object;
-        const invoiceId = paymentIntent.metadata.invoiceId;
-
-        if (!invoiceId) {
-          console.error('Payment Intent missing invoiceId in metadata');
-          break;
-        }
-
-        // Find existing payment and mark as failed
-        const existingPayment = await PaymentRepo.findByStripePaymentIntent(
-          paymentIntent.id,
-        );
-
-        if (existingPayment) {
-          await PaymentRepo.updateStatus(
-            existingPayment.id,
-            PaymentStatus.FAILED,
-          );
-        }
-
-        console.log(`Payment failed: ${paymentIntent.id}`);
-        break;
-      }
-
-      default:
-        console.log(`Unhandled event type: ${event.type}`);
+      res.json({ received: true });
+    } catch (error) {
+      console.error('Error processing webhook:', error);
+      res.status(500).send('Webhook processing failed');
     }
-
-    // Return 200 to acknowledge receipt of the event
-    new SuccessResponse('Webhook processed successfully', {}).send(res);
-  }),
+  },
 );
+
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  console.log('Processing payment_intent.succeeded:', paymentIntent.id);
+
+  const invoiceId = paymentIntent.metadata?.invoiceId;
+  const userId = paymentIntent.metadata?.userId;
+
+  if (!invoiceId || !userId) {
+    console.error('Missing invoiceId or userId in payment intent metadata');
+    return;
+  }
+
+  // Create payment record
+  await PaymentRepo.create({
+    invoiceId,
+    userId,
+    amount: paymentIntent.amount / 100,
+    currency: paymentIntent.currency.toUpperCase(),
+    paymentMethod: 'STRIPE',
+    stripePaymentIntentId: paymentIntent.id,
+    status: 'COMPLETED',
+    paidAt: new Date(),
+  });
+
+  // Update invoice status
+  await InvoiceRepo.updateStatusAfterPayment(invoiceId);
+
+  console.log(`Payment recorded for invoice ${invoiceId}`);
+}
+
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+  console.log('Processing payment_intent.payment_failed:', paymentIntent.id);
+
+  const invoiceId = paymentIntent.metadata?.invoiceId;
+  const userId = paymentIntent.metadata?.userId;
+
+  if (!invoiceId || !userId) {
+    console.error('Missing invoiceId or userId in payment intent metadata');
+    return;
+  }
+
+  // Create failed payment record
+  await PaymentRepo.create({
+    invoiceId,
+    userId,
+    amount: paymentIntent.amount / 100,
+    currency: paymentIntent.currency.toUpperCase(),
+    paymentMethod: 'STRIPE',
+    stripePaymentIntentId: paymentIntent.id,
+    status: 'FAILED',
+    notes: paymentIntent.last_payment_error?.message,
+  });
+
+  console.log(`Payment failed for invoice ${invoiceId}`);
+}
 
 export default router;
