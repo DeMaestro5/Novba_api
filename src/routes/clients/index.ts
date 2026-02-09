@@ -8,6 +8,7 @@ import asyncHandler from '../../helpers/asyncHandler';
 import { getClientData, convertToCSV } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
+import { checkUsageLimit } from '../../middleware/subscription-check';
 
 const router = express.Router();
 
@@ -55,6 +56,7 @@ router.get(
  */
 router.post(
   '/',
+  checkUsageLimit('clients'),
   validator(schema.create),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const client = await ClientRepo.create({

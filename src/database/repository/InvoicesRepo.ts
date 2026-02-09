@@ -398,6 +398,69 @@ async function countByUser(
 }
 
 /**
+ * Update invoice status after payment
+ * Automatically sets to PAID or PARTIALLY_PAID based on payment amount
+ */
+async function updateStatusAfterPayment(invoiceId: string) {
+  // Get invoice with payments
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: {
+      payments: {
+        where: {
+          status: 'COMPLETED',
+        },
+      },
+    },
+  });
+
+  if (!invoice) {
+    throw new Error('Invoice not found');
+  }
+
+  // Calculate total paid
+  const totalPaid = invoice.payments.reduce(
+    (sum, payment) => sum + Number(payment.amount),
+    0,
+  );
+
+  const invoiceTotal = Number(invoice.total);
+
+  // Determine new status
+  let newStatus: InvoiceStatus;
+  const additionalData: any = {};
+
+  if (totalPaid >= invoiceTotal) {
+    newStatus = InvoiceStatus.PAID;
+    additionalData.paidAt = new Date();
+  } else if (totalPaid > 0) {
+    newStatus = InvoiceStatus.PARTIALLY_PAID;
+  } else {
+    // No change if no payment
+    return invoice;
+  }
+
+  // Update invoice status
+  return prisma.invoice.update({
+    where: { id: invoiceId },
+    data: {
+      status: newStatus,
+      ...additionalData,
+    },
+    include: {
+      client: true,
+      project: true,
+      lineItems: {
+        orderBy: {
+          order: 'asc',
+        },
+      },
+      payments: true,
+    },
+  });
+}
+
+/**
  * Duplicate invoice
  */
 async function duplicate(
@@ -590,6 +653,7 @@ async function findByIds(
 
 export default {
   findByIdPublic,
+  updateStatusAfterPayment,
   existsForUser,
   findById,
   generateInvoiceNumber,

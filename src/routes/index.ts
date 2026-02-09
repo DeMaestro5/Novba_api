@@ -25,11 +25,14 @@ import pricing from './pricing'
 import portfolio from './portfolio';
 import publicPortfolioLink from './portfolio/public'
 import settings from './settings'
+import subscription from './subscription';
+import stripeSubscriptionWebhook from './webhooks/stripe-subscription';
 
 
 const router = express.Router();
 
 router.use('/webhooks', stripeWebhook);
+router.use('/webhooks', stripeSubscriptionWebhook);
 
 /*---------------------------------------------------------*/
 router.use(apikey);
@@ -57,7 +60,12 @@ router.use('/payments', payments)
 router.use('/dashboard', dashboard);
 router.use('/pricing', pricing);
 router.use('/portfolio', portfolio);
-router.use('/', publicPortfolioLink) 
 router.use('/settings', settings);
+router.use('/subscription', subscription);
+
+
+
+// Public portfolio MUST come LAST
+router.use('/', publicPortfolioLink);
 
 export default router;
