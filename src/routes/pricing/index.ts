@@ -2,6 +2,7 @@ import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
 import PricingRepo from '../../database/repository/PricingRepo';
 import MarketRatesRepo from '../../database/repository/MarketRatesRepo';
+import ProjectEstimatorRepo from '../../database/repository/ProjectEstimatorRepo';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
@@ -145,6 +146,28 @@ router.get(
       actionItems: recommendations.recommendations
         .filter((r) => r.priority === 'HIGH')
         .map((r) => r.title),
+    }).send(res);
+  }),
+);
+
+/**
+ * POST /api/v1/pricing/estimate-project
+ * Estimate project value based on description
+ */
+router.post(
+  '/estimate-project',
+  validator(schema.estimateProject),
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const { description, projectType } = req.body;
+
+    const estimate = ProjectEstimatorRepo.estimateProject(description, projectType ?? 'FIXED');
+
+    new SuccessResponse('Project estimated successfully', {
+      estimate: {
+        ...estimate,
+        currency: 'USD',
+        disclaimer: 'Estimates based on market data analysis. Actual project value may vary based on client, scope, and market conditions.',
+      },
     }).send(res);
   }),
 );

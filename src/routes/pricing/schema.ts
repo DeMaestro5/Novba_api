@@ -17,4 +17,9 @@ export default {
       .valid('BEGINNER', 'INTERMEDIATE', 'EXPERT')
       .optional(),
   }),
+
+  estimateProject: Joi.object().keys({
+    description: Joi.string().required().min(10).max(2000),
+    projectType: Joi.string().valid('HOURLY', 'FIXED').optional().default('FIXED'),
+  }),
 };
