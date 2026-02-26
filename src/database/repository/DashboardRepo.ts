@@ -306,22 +306,55 @@ async function getClientRevenue(userId: string, limit: number = 10) {
     },
   });
 
-  return clients
+  // Build full revenue map before slicing
+  const allWithRevenue = clients
     .map((client) => ({
-      clientId: client.id,
-      companyName: client.companyName,
-      contactName: client.contactName,
-      email: client.email,
+      ...client,
       totalRevenue: client.invoices.reduce(
         (sum, inv) => sum + Number(inv.total),
         0,
       ),
-      totalInvoices: client._count.invoices,
-      currency: client.currency,
     }))
     .filter((c) => c.totalRevenue > 0)
-    .sort((a, b) => b.totalRevenue - a.totalRevenue)
-    .slice(0, limit);
+    .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+  const grandTotal = allWithRevenue.reduce(
+    (sum, c) => sum + c.totalRevenue,
+    0,
+  );
+
+  const topN = allWithRevenue.slice(0, limit);
+  const topNTotal = topN.reduce((sum, c) => sum + c.totalRevenue, 0);
+
+  const concentrationPercent =
+    grandTotal > 0 ? Math.round((topNTotal / grandTotal) * 100) : 0;
+
+  // HEALTHY < 40%, MODERATE 40-60%, CONCENTRATED > 60%
+  const concentrationStatus =
+    concentrationPercent < 40
+      ? 'HEALTHY'
+      : concentrationPercent < 60
+        ? 'MODERATE'
+        : 'CONCENTRATED';
+
+  return {
+    clients: topN.map((client) => ({
+      clientId: client.id,
+      companyName: client.companyName,
+      contactName: client.contactName,
+      email: client.email,
+      totalRevenue: client.totalRevenue,
+      totalInvoices: client._count.invoices,
+      currency: client.currency,
+    })),
+    summary: {
+      topNTotal: Math.round(topNTotal),
+      grandTotal: Math.round(grandTotal),
+      concentrationPercent,
+      concentrationStatus,
+      currency: 'USD',
+    },
+  };
 }
 
 // ─── CASH FLOW FORECAST ────────────────────────────────────────────────────────
@@ -399,10 +432,85 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
+  // 1. Peak month — highest projected value in the forecast
+  const peakMonth = monthlyData.reduce(
+    (peak, month) => (month.projected > peak.projected ? month : peak),
+    monthlyData[0] ?? {
+      month: '',
+      projected: 0,
+      conservative: 0,
+      currency: 'USD',
+    },
+  );
+
+  // 2. Current month actual revenue (PAID invoices this month)
+  const currentMonthStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    1,
+  );
+  const currentMonthRevenue = await prisma.invoice.aggregate({
+    where: {
+      userId,
+      status: 'PAID',
+      paidAt: { gte: currentMonthStart, lte: today },
+    },
+    _sum: { total: true },
+  });
+  const currentMonthTotal = Number(currentMonthRevenue._sum.total || 0);
+
+  // 3. Projected growth % — peak projected vs current month actual
+  const projectedGrowthPercent =
+    currentMonthTotal > 0
+      ? Math.round(
+          ((peakMonth.projected - currentMonthTotal) / currentMonthTotal) * 100,
+        )
+      : 0;
+
+  // 4. Human-readable peak month label e.g. "July"
+  const peakMonthLabel = peakMonth.month
+    ? new Date(peakMonth.month + '-01').toLocaleString('en-US', {
+        month: 'long',
+      })
+    : null;
+
+  // 5. Overdue amount within the forecast pipeline
+  const overdueTotal = forecast
+    .filter((item) => item.isOverdue)
+    .reduce((sum, item) => sum + item.expectedAmount, 0);
+
+  // 6. Total pipeline
+  const pipelineTotal = forecast.reduce(
+    (sum, item) => sum + item.expectedAmount,
+    0,
+  );
+
   return {
     upcomingInvoices: forecast,
-    monthlyForecast: monthlyData, // both projected + conservative for the two bar colors
-    totalExpected: forecast.reduce((sum, item) => sum + item.expectedAmount, 0),
+    monthlyForecast: monthlyData,
+    totalExpected: Math.round(pipelineTotal),
+    insights: {
+      peakMonth: {
+        label: peakMonthLabel,
+        month: peakMonth.month,
+        projected: peakMonth.projected,
+        conservative: peakMonth.conservative,
+        currency: 'USD',
+      },
+      projectedGrowth: {
+        percent: projectedGrowthPercent,
+        direction: projectedGrowthPercent >= 0 ? 'up' : 'down',
+        currentMonthTotal,
+      },
+      pipeline: {
+        total: Math.round(pipelineTotal),
+        overdueAmount: Math.round(overdueTotal),
+        overduePercent:
+          pipelineTotal > 0
+            ? Math.round((overdueTotal / pipelineTotal) * 100)
+            : 0,
+      },
+    },
   };
 }
 
