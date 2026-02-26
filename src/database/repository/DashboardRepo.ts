@@ -1,147 +1,187 @@
 import prisma from '../index';
 
+// ─── HELPER ───────────────────────────────────────────────────────────────────
+
+function calculatePercentageChange(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function getWeekNumber(date: Date): number {
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+function calculateHealthScore(
+  avgPaymentTime: number,
+  onTimeRate: number,
+  outstandingRatio: number,
+): number {
+  let score = 100;
+  if (avgPaymentTime > 30) score -= Math.min(30, (avgPaymentTime - 30) * 0.5);
+  if (onTimeRate < 80) score -= (80 - onTimeRate) * 0.5;
+  if (outstandingRatio > 50)
+    score -= Math.min(30, (outstandingRatio - 50) * 0.5);
+  return Math.max(0, Math.round(score));
+}
+
+// ─── OVERVIEW ─────────────────────────────────────────────────────────────────
 
 /**
- * Get dashboard overview statistics
+ * GET /dashboard/overview
+ * Powers: Total Revenue card, Pending Invoices card, Outstanding card, Active Clients card
  */
 async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
-  // Build date filter
-  const dateFilter: any = {};
-  if (startDate) dateFilter.gte = startDate;
-  if (endDate) dateFilter.lte = endDate;
+  const now = new Date();
 
-  // Total Revenue (from paid invoices)
-  const revenueData = await prisma.invoice.aggregate({
-    where: {
-      userId,
-      status: 'PAID',
-      ...(Object.keys(dateFilter).length > 0 && { paidAt: dateFilter }),
-    },
-    _sum: {
-      total: true,
-    },
+  // Resolve current period bounds
+  const currentStart =
+    startDate ?? new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentEnd = endDate ?? now;
+
+  // Calculate matching previous period (same length, immediately before)
+  const periodMs = currentEnd.getTime() - currentStart.getTime();
+  const prevStart = new Date(currentStart.getTime() - periodMs);
+  const prevEnd = new Date(currentStart.getTime());
+
+  const currentDateFilter = { gte: currentStart, lte: currentEnd };
+  const prevDateFilter = { gte: prevStart, lte: prevEnd };
+
+  // ── Revenue ──────────────────────────────────────────────────────────────
+  const [currentRevenueData, prevRevenueData] = await Promise.all([
+    prisma.invoice.aggregate({
+      where: { userId, status: 'PAID', paidAt: currentDateFilter },
+      _sum: { total: true },
+    }),
+    prisma.invoice.aggregate({
+      where: { userId, status: 'PAID', paidAt: prevDateFilter },
+      _sum: { total: true },
+    }),
+  ]);
+
+  const currentRevenue = Number(currentRevenueData._sum.total || 0);
+  const prevRevenue = Number(prevRevenueData._sum.total || 0);
+
+  // ── Pending Invoices (SENT but not yet overdue) ───────────────────────────
+  const pendingData = await prisma.invoice.aggregate({
+    where: { userId, status: 'SENT' },
+    _sum: { total: true },
+    _count: { _all: true },
   });
 
-  // Outstanding Amount (sent but unpaid invoices)
+  // ── Outstanding (SENT + OVERDUE + PARTIALLY_PAID) ────────────────────────
   const outstandingData = await prisma.invoice.aggregate({
-    where: {
-      userId,
-      status: {
-        in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'],
-      },
-    },
-    _sum: {
-      total: true,
-    },
+    where: { userId, status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] } },
+    _sum: { total: true },
   });
 
-  // Get partially paid invoices to calculate actual outstanding
+  // Correct outstanding by subtracting partial payments already made
   const partiallyPaidInvoices = await prisma.invoice.findMany({
-    where: {
-      userId,
-      status: 'PARTIALLY_PAID',
-    },
-    include: {
-      payments: {
-        where: {
-          status: 'COMPLETED',
-        },
-      },
-    },
+    where: { userId, status: 'PARTIALLY_PAID' },
+    include: { payments: { where: { status: 'COMPLETED' } } },
   });
 
-  // Calculate actual outstanding (total - payments made)
   let actualOutstanding = Number(outstandingData._sum.total || 0);
   for (const invoice of partiallyPaidInvoices) {
     const paidAmount = invoice.payments.reduce(
-      (sum, payment) => sum + Number(payment.amount),
+      (sum, p) => sum + Number(p.amount),
       0,
     );
-    const invoiceOutstanding = Number(invoice.total) - paidAmount;
-    actualOutstanding = actualOutstanding - Number(invoice.total) + invoiceOutstanding;
+    actualOutstanding =
+      actualOutstanding -
+      Number(invoice.total) +
+      (Number(invoice.total) - paidAmount);
   }
 
-  // Total Expenses
-  const expensesData = await prisma.expense.aggregate({
-    where: {
-      userId,
-      ...(Object.keys(dateFilter).length > 0 && { date: dateFilter }),
-    },
-    _sum: {
-      amount: true,
-    },
+  // ── Overdue count ────────────────────────────────────────────────────────
+  const overdueCount = await prisma.invoice.count({
+    where: { userId, status: 'OVERDUE' },
   });
 
-  // Count statistics
-  const [totalClients, activeProjects, totalInvoices, overdueInvoices] =
-    await Promise.all([
-      prisma.client.count({ where: { userId } }),
-      prisma.project.count({ where: { userId, status: 'ACTIVE' } }),
-      prisma.invoice.count({ where: { userId } }),
-      prisma.invoice.count({ where: { userId, status: 'OVERDUE' } }),
-    ]);
-
-  // Recent payments
-  const recentPayments = await prisma.payment.findMany({
-    where: {
-      userId,
-      status: 'COMPLETED',
-    },
-    take: 5,
-    orderBy: {
-      paidAt: 'desc',
-    },
-    include: {
-      invoice: {
-        select: {
-          invoiceNumber: true,
-          client: {
-            select: {
-              companyName: true,
-            },
-          },
-        },
+  // ── Active Clients ───────────────────────────────────────────────────────
+  // "Active" = has at least one invoice in current period
+  const [currentActiveClients, prevActiveClients] = await Promise.all([
+    prisma.client.count({
+      where: {
+        userId,
+        invoices: { some: { createdAt: currentDateFilter } },
       },
-    },
+    }),
+    prisma.client.count({
+      where: {
+        userId,
+        invoices: { some: { createdAt: prevDateFilter } },
+      },
+    }),
+  ]);
+
+  // ── Misc counts ──────────────────────────────────────────────────────────
+  const [totalClients, activeProjects, totalInvoices] = await Promise.all([
+    prisma.client.count({ where: { userId } }),
+    prisma.project.count({ where: { userId, status: 'ACTIVE' } }),
+    prisma.invoice.count({ where: { userId } }),
+  ]);
+
+  // ── Expenses ─────────────────────────────────────────────────────────────
+  const expensesData = await prisma.expense.aggregate({
+    where: { userId, date: currentDateFilter },
+    _sum: { amount: true },
   });
 
   return {
+    // ── Stat cards ─────────────────────────────────────────────────────────
     revenue: {
-      total: Number(revenueData._sum.total || 0),
-      currency: 'USD', // TODO: Get from user preferences
+      total: currentRevenue,
+      previousTotal: prevRevenue,
+      percentageChange: calculatePercentageChange(currentRevenue, prevRevenue),
+      currency: 'USD',
+    },
+    pendingInvoices: {
+      total: Number(pendingData._sum.total || 0),
+      count: pendingData._count._all, // → "8 invoices awaiting payment"
+      currency: 'USD',
     },
     outstanding: {
       total: actualOutstanding,
+      overdueCount, // → "1 overdue"
       currency: 'USD',
     },
+    activeClients: {
+      count: currentActiveClients,
+      previousCount: prevActiveClients,
+      percentageChange: calculatePercentageChange(
+        currentActiveClients,
+        prevActiveClients,
+      ),
+    },
+    // ── Supporting data ───────────────────────────────────────────────────
     expenses: {
       total: Number(expensesData._sum.amount || 0),
       currency: 'USD',
     },
     profit: {
-      total: Number(revenueData._sum.total || 0) - Number(expensesData._sum.amount || 0),
+      total: currentRevenue - Number(expensesData._sum.amount || 0),
       currency: 'USD',
     },
     counts: {
       totalClients,
       activeProjects,
       totalInvoices,
-      overdueInvoices,
+      overdueInvoices: overdueCount,
     },
-    recentPayments: recentPayments.map((payment) => ({
-      id: payment.id,
-      amount: Number(payment.amount),
-      currency: payment.currency,
-      paidAt: payment.paidAt,
-      invoiceNumber: payment.invoice.invoiceNumber,
-      clientName: payment.invoice.client.companyName,
-      paymentMethod: payment.paymentMethod,
-    })),
   };
 }
 
+// ─── INCOME CHART ──────────────────────────────────────────────────────────────
+
 /**
- * Get income chart data (monthly breakdown)
+ * GET /dashboard/income-chart
+ * Powers: Revenue Overview chart (income line)
  */
 async function getIncomeChart(
   userId: string,
@@ -153,57 +193,46 @@ async function getIncomeChart(
     where: {
       userId,
       status: 'PAID',
-      paidAt: {
-        gte: startDate,
-        lte: endDate,
-      },
+      paidAt: { gte: startDate, lte: endDate },
     },
-    select: {
-      total: true,
-      paidAt: true,
-      currency: true,
-    },
-    orderBy: {
-      paidAt: 'asc',
-    },
+    select: { total: true, paidAt: true },
+    orderBy: { paidAt: 'asc' },
   });
 
-  // Group by time period
   const grouped = new Map<string, number>();
 
   invoices.forEach((invoice) => {
     if (!invoice.paidAt) return;
-
-    let key: string;
     const date = new Date(invoice.paidAt);
+    let key: string;
 
     if (groupBy === 'month') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+        2,
+        '0',
+      )}`;
     } else if (groupBy === 'week') {
-      const weekNum = getWeekNumber(date);
-      key = `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      key = `${date.getFullYear()}-W${String(getWeekNumber(date)).padStart(
+        2,
+        '0',
+      )}`;
     } else {
       key = date.toISOString().split('T')[0];
     }
 
-    const current = grouped.get(key) || 0;
-    grouped.set(key, current + Number(invoice.total));
+    grouped.set(key, (grouped.get(key) || 0) + Number(invoice.total));
   });
 
-  // Convert to array and sort
-  const data = Array.from(grouped.entries())
-    .map(([period, amount]) => ({
-      period,
-      amount,
-      currency: 'USD',
-    }))
+  return Array.from(grouped.entries())
+    .map(([period, amount]) => ({ period, amount, currency: 'USD' }))
     .sort((a, b) => a.period.localeCompare(b.period));
-
-  return data;
 }
 
+// ─── EXPENSES CHART ────────────────────────────────────────────────────────────
+
 /**
- * Get expenses chart data (monthly breakdown)
+ * GET /dashboard/expenses-chart
+ * Powers: Revenue Overview chart (expenses line) + category breakdown
  */
 async function getExpensesChart(
   userId: string,
@@ -212,25 +241,11 @@ async function getExpensesChart(
   groupBy: 'month' | 'week' | 'day' = 'month',
 ) {
   const expenses = await prisma.expense.findMany({
-    where: {
-      userId,
-      date: {
-        gte: startDate,
-        lte: endDate,
-      },
-    },
-    select: {
-      amount: true,
-      date: true,
-      category: true,
-      currency: true,
-    },
-    orderBy: {
-      date: 'asc',
-    },
+    where: { userId, date: { gte: startDate, lte: endDate } },
+    select: { amount: true, date: true, category: true },
+    orderBy: { date: 'asc' },
   });
 
-  // Group by time period and category
   const groupedByPeriod = new Map<string, number>();
   const groupedByCategory = new Map<string, number>();
 
@@ -239,137 +254,106 @@ async function getExpensesChart(
     let key: string;
 
     if (groupBy === 'month') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+        2,
+        '0',
+      )}`;
     } else if (groupBy === 'week') {
-      const weekNum = getWeekNumber(date);
-      key = `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+      key = `${date.getFullYear()}-W${String(getWeekNumber(date)).padStart(
+        2,
+        '0',
+      )}`;
     } else {
       key = date.toISOString().split('T')[0];
     }
 
-    // By period
-    const currentPeriod = groupedByPeriod.get(key) || 0;
-    groupedByPeriod.set(key, currentPeriod + Number(expense.amount));
-
-    // By category
-    const currentCategory = groupedByCategory.get(expense.category) || 0;
-    groupedByCategory.set(expense.category, currentCategory + Number(expense.amount));
+    groupedByPeriod.set(
+      key,
+      (groupedByPeriod.get(key) || 0) + Number(expense.amount),
+    );
+    groupedByCategory.set(
+      expense.category,
+      (groupedByCategory.get(expense.category) || 0) + Number(expense.amount),
+    );
   });
 
-  const byPeriod = Array.from(groupedByPeriod.entries())
-    .map(([period, amount]) => ({
-      period,
-      amount,
-      currency: 'USD',
-    }))
-    .sort((a, b) => a.period.localeCompare(b.period));
-
-  const byCategory = Array.from(groupedByCategory.entries())
-    .map(([category, amount]) => ({
-      category,
-      amount,
-      currency: 'USD',
-    }))
-    .sort((a, b) => b.amount - a.amount);
-
   return {
-    byPeriod,
-    byCategory,
-    total: expenses.reduce((sum, exp) => sum + Number(exp.amount), 0),
+    byPeriod: Array.from(groupedByPeriod.entries())
+      .map(([period, amount]) => ({ period, amount, currency: 'USD' }))
+      .sort((a, b) => a.period.localeCompare(b.period)),
+    byCategory: Array.from(groupedByCategory.entries())
+      .map(([category, amount]) => ({ category, amount, currency: 'USD' }))
+      .sort((a, b) => b.amount - a.amount),
+    total: expenses.reduce((sum, e) => sum + Number(e.amount), 0),
   };
 }
 
+// ─── CLIENT REVENUE ────────────────────────────────────────────────────────────
+
 /**
- * Get client revenue breakdown
+ * GET /dashboard/client-revenue
+ * Powers: Top Clients widget
  */
 async function getClientRevenue(userId: string, limit: number = 10) {
   const clients = await prisma.client.findMany({
     where: { userId },
     include: {
       invoices: {
-        where: {
-          status: 'PAID',
-        },
-        select: {
-          total: true,
-        },
+        where: { status: 'PAID' },
+        select: { total: true },
       },
-      _count: {
-        select: {
-          invoices: true,
-        },
-      },
+      _count: { select: { invoices: true } },
     },
   });
 
-  const clientRevenue = clients
-    .map((client) => {
-      const totalRevenue = client.invoices.reduce(
-        (sum, invoice) => sum + Number(invoice.total),
+  return clients
+    .map((client) => ({
+      clientId: client.id,
+      companyName: client.companyName,
+      contactName: client.contactName,
+      email: client.email,
+      totalRevenue: client.invoices.reduce(
+        (sum, inv) => sum + Number(inv.total),
         0,
-      );
-
-      return {
-        clientId: client.id,
-        companyName: client.companyName,
-        contactName: client.contactName,
-        email: client.email,
-        totalRevenue,
-        totalInvoices: client._count.invoices,
-        currency: client.currency,
-      };
-    })
-    .filter((client) => client.totalRevenue > 0)
+      ),
+      totalInvoices: client._count.invoices,
+      currency: client.currency,
+    }))
+    .filter((c) => c.totalRevenue > 0)
     .sort((a, b) => b.totalRevenue - a.totalRevenue)
     .slice(0, limit);
-
-  return clientRevenue;
 }
 
+// ─── CASH FLOW FORECAST ────────────────────────────────────────────────────────
+
 /**
- * Get cash flow forecast (based on invoice due dates)
+ * GET /dashboard/cash-flow-forecast
+ * Powers: Cash Flow Forecast chart
  */
 async function getCashFlowForecast(userId: string, months: number = 6) {
   const today = new Date();
   const endDate = new Date(today);
   endDate.setMonth(endDate.getMonth() + months);
 
-  // Get unpaid invoices with due dates
   const upcomingInvoices = await prisma.invoice.findMany({
     where: {
       userId,
-      status: {
-        in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'],
-      },
-      dueDate: {
-        lte: endDate,
-      },
+      status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] },
+      dueDate: { lte: endDate },
     },
     include: {
-      payments: {
-        where: {
-          status: 'COMPLETED',
-        },
-      },
-      client: {
-        select: {
-          companyName: true,
-        },
-      },
+      payments: { where: { status: 'COMPLETED' } },
+      client: { select: { companyName: true } },
     },
-    orderBy: {
-      dueDate: 'asc',
-    },
+    orderBy: { dueDate: 'asc' },
   });
 
-  // Calculate expected incoming cash
   const forecast = upcomingInvoices.map((invoice) => {
     const paidAmount = invoice.payments.reduce(
-      (sum, payment) => sum + Number(payment.amount),
+      (sum, p) => sum + Number(p.amount),
       0,
     );
     const expectedAmount = Number(invoice.total) - paidAmount;
-
     return {
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
@@ -382,183 +366,229 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
     };
   });
 
-  // Group by month
-  const monthlyForecast = new Map<string, number>();
+  // Monthly grouping for the bar chart
+  const monthlyForecast = new Map<
+    string,
+    { projected: number; conservative: number }
+  >();
+
   forecast.forEach((item) => {
     const date = new Date(item.dueDate);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const current = monthlyForecast.get(key) || 0;
-    monthlyForecast.set(key, current + item.expectedAmount);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+      2,
+      '0',
+    )}`;
+    const existing = monthlyForecast.get(key) || {
+      projected: 0,
+      conservative: 0,
+    };
+    monthlyForecast.set(key, {
+      // Projected = full expected
+      projected: existing.projected + item.expectedAmount,
+      // Conservative = 80% of projected (accounts for late payments)
+      conservative: existing.conservative + item.expectedAmount * 0.8,
+    });
   });
 
   const monthlyData = Array.from(monthlyForecast.entries())
-    .map(([month, amount]) => ({
+    .map(([month, amounts]) => ({
       month,
-      expectedIncome: amount,
+      projected: Math.round(amounts.projected),
+      conservative: Math.round(amounts.conservative),
       currency: 'USD',
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
   return {
     upcomingInvoices: forecast,
-    monthlyForecast: monthlyData,
+    monthlyForecast: monthlyData, // both projected + conservative for the two bar colors
     totalExpected: forecast.reduce((sum, item) => sum + item.expectedAmount, 0),
   };
 }
 
+// ─── HEALTH METRICS ────────────────────────────────────────────────────────────
+
 /**
- * Get business health metrics
+ * GET /dashboard/health-metrics
+ * Powers: Business Health widget (score + 4 metrics)
  */
 async function getHealthMetrics(userId: string) {
   const today = new Date();
   const thirtyDaysAgo = new Date(today);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const sixtyDaysAgo = new Date(thirtyDaysAgo);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 30);
+  const ninetyDaysAgo = new Date(today);
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-  // Average payment time
+  // ── Avg payment time + on-time rate (from all paid invoices) ─────────────
   const paidInvoices = await prisma.invoice.findMany({
-    where: {
-      userId,
-      status: 'PAID',
-      paidAt: {
-        not: null,
-      },
-    },
-    select: {
-      issueDate: true,
-      paidAt: true,
-      dueDate: true,
-    },
+    where: { userId, status: 'PAID', paidAt: { not: null } },
+    select: { issueDate: true, paidAt: true, dueDate: true },
   });
 
-  const paymentTimes = paidInvoices.map((invoice) => {
-    const issued = new Date(invoice.issueDate);
-    const paid = new Date(invoice.paidAt!);
-    return Math.floor((paid.getTime() - issued.getTime()) / (1000 * 60 * 60 * 24));
-  });
+  const paymentTimes = paidInvoices.map((inv) =>
+    Math.floor(
+      (new Date(inv.paidAt!).getTime() - new Date(inv.issueDate).getTime()) /
+        86400000,
+    ),
+  );
 
   const averagePaymentTime =
     paymentTimes.length > 0
-      ? Math.round(paymentTimes.reduce((a, b) => a + b, 0) / paymentTimes.length)
+      ? Math.round(
+          paymentTimes.reduce((a, b) => a + b, 0) / paymentTimes.length,
+        )
       : 0;
 
-  // On-time payment rate
-  const onTimePayments = paidInvoices.filter((invoice) => {
-    if (!invoice.paidAt) return false;
-    return new Date(invoice.paidAt) <= new Date(invoice.dueDate);
-  }).length;
+  const onTimePayments = paidInvoices.filter(
+    (inv) => inv.paidAt && new Date(inv.paidAt) <= new Date(inv.dueDate),
+  ).length;
 
-  const onTimePaymentRate =
+  // collectionRate = on-time payment percentage (maps to "Collection Rate 87%" in UI)
+  const collectionRate =
     paidInvoices.length > 0
       ? Math.round((onTimePayments / paidInvoices.length) * 100)
       : 0;
 
-  // Revenue trend (comparing last 30 days to previous 30 days)
-  const last30DaysRevenue = await prisma.invoice.aggregate({
-    where: {
-      userId,
-      status: 'PAID',
-      paidAt: {
-        gte: thirtyDaysAgo,
+  // ── Revenue growth (last 30 days vs previous 30 days) ────────────────────
+  const [last30, prev30] = await Promise.all([
+    prisma.invoice.aggregate({
+      where: { userId, status: 'PAID', paidAt: { gte: thirtyDaysAgo } },
+      _sum: { total: true },
+    }),
+    prisma.invoice.aggregate({
+      where: {
+        userId,
+        status: 'PAID',
+        paidAt: { gte: sixtyDaysAgo, lt: thirtyDaysAgo },
       },
-    },
-    _sum: {
-      total: true,
-    },
-  });
+      _sum: { total: true },
+    }),
+  ]);
 
-  const sixtyDaysAgo = new Date(thirtyDaysAgo);
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 30);
+  const currentRevenue = Number(last30._sum.total || 0);
+  const previousRevenue = Number(prev30._sum.total || 0);
+  const revenueGrowth = calculatePercentageChange(
+    currentRevenue,
+    previousRevenue,
+  );
 
-  const previous30DaysRevenue = await prisma.invoice.aggregate({
-    where: {
-      userId,
-      status: 'PAID',
-      paidAt: {
-        gte: sixtyDaysAgo,
-        lt: thirtyDaysAgo,
-      },
-    },
-    _sum: {
-      total: true,
-    },
-  });
-
-  const currentRevenue = Number(last30DaysRevenue._sum.total || 0);
-  const previousRevenue = Number(previous30DaysRevenue._sum.total || 0);
-  const revenueTrend =
-    previousRevenue > 0
-      ? Math.round(((currentRevenue - previousRevenue) / previousRevenue) * 100)
-      : 0;
-
-  // Outstanding vs revenue ratio
+  // ── Outstanding ratio (for health score calc only) ───────────────────────
   const outstandingData = await prisma.invoice.aggregate({
-    where: {
-      userId,
-      status: {
-        in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'],
-      },
-    },
-    _sum: {
-      total: true,
-    },
+    where: { userId, status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] } },
+    _sum: { total: true },
   });
-
   const outstanding = Number(outstandingData._sum.total || 0);
   const outstandingRatio =
     currentRevenue > 0 ? Math.round((outstanding / currentRevenue) * 100) : 0;
 
+  // ── Client retention rate ────────────────────────────────────────────────
+  // Clients who had invoices in the previous 30-90 day window
+  const previousPeriodClients = await prisma.client.findMany({
+    where: {
+      userId,
+      invoices: {
+        some: { createdAt: { gte: ninetyDaysAgo, lt: thirtyDaysAgo } },
+      },
+    },
+    select: { id: true },
+  });
+
+  // Of those, how many also had invoices in the last 30 days
+  const retainedCount =
+    previousPeriodClients.length > 0
+      ? await prisma.client.count({
+          where: {
+            userId,
+            id: { in: previousPeriodClients.map((c) => c.id) },
+            invoices: { some: { createdAt: { gte: thirtyDaysAgo } } },
+          },
+        })
+      : 0;
+
+  const clientRetention =
+    previousPeriodClients.length > 0
+      ? Math.round((retainedCount / previousPeriodClients.length) * 100)
+      : 100; // 100% if no previous clients to compare (new account)
+
   return {
-    averagePaymentTime, // in days
-    onTimePaymentRate, // percentage
-    revenueTrend, // percentage change
-    outstandingRatio, // percentage
-    totalPaidInvoices: paidInvoices.length,
     healthScore: calculateHealthScore(
       averagePaymentTime,
-      onTimePaymentRate,
+      collectionRate,
       outstandingRatio,
     ),
+    // ── These four map directly to the four rows in the Business Health widget ──
+    collectionRate, // "Collection Rate   87%"
+    avgPaymentTime: averagePaymentTime, // "Avg Payment Time  12 days"
+    clientRetention, // "Client Retention  92%"
+    revenueGrowth, // "Revenue Growth    29.4%"
   };
 }
 
-/**
- * Calculate overall business health score (0-100)
- */
-function calculateHealthScore(
-  avgPaymentTime: number,
-  onTimeRate: number,
-  outstandingRatio: number,
-): number {
-  let score = 100;
-
-  // Deduct points for slow payments (target: 30 days or less)
-  if (avgPaymentTime > 30) {
-    score -= Math.min(30, (avgPaymentTime - 30) * 0.5);
-  }
-
-  // Deduct points for late payments (target: 80%+ on time)
-  if (onTimeRate < 80) {
-    score -= (80 - onTimeRate) * 0.5;
-  }
-
-  // Deduct points for high outstanding ratio (target: < 50%)
-  if (outstandingRatio > 50) {
-    score -= Math.min(30, (outstandingRatio - 50) * 0.5);
-  }
-
-  return Math.max(0, Math.round(score));
-}
+// ─── RECENT ACTIVITY ──────────────────────────────────────────────────────────
 
 /**
- * Helper: Get week number of the year
+ * GET /dashboard/recent-activity
+ * Powers: Recent Activity feed (payments received + invoices sent/overdue, merged + sorted)
  */
-function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+async function getRecentActivity(userId: string, limit: number = 10) {
+  const [recentPayments, recentInvoices] = await Promise.all([
+    prisma.payment.findMany({
+      where: { userId, status: 'COMPLETED' },
+      take: limit,
+      orderBy: { paidAt: 'desc' },
+      include: {
+        invoice: {
+          select: {
+            invoiceNumber: true,
+            client: { select: { companyName: true } },
+          },
+        },
+      },
+    }),
+    prisma.invoice.findMany({
+      where: { userId, status: { in: ['SENT', 'OVERDUE'] } },
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        client: { select: { companyName: true } },
+      },
+    }),
+  ]);
+
+  const activity = [
+    ...recentPayments.map((p) => ({
+      id: p.id,
+      type: 'PAYMENT_RECEIVED' as const,
+      clientName: p.invoice.client.companyName,
+      invoiceNumber: p.invoice.invoiceNumber,
+      amount: Number(p.amount),
+      currency: p.currency,
+      timestamp: p.paidAt,
+    })),
+    ...recentInvoices.map((inv) => ({
+      id: inv.id,
+      type: (inv.status === 'OVERDUE' ? 'INVOICE_OVERDUE' : 'INVOICE_SENT') as
+        | 'INVOICE_OVERDUE'
+        | 'INVOICE_SENT',
+      clientName: inv.client.companyName,
+      invoiceNumber: inv.invoiceNumber,
+      amount: Number(inv.total),
+      currency: inv.currency,
+      timestamp: inv.updatedAt,
+    })),
+  ]
+    .sort(
+      (a, b) =>
+        new Date(b.timestamp!).getTime() - new Date(a.timestamp!).getTime(),
+    )
+    .slice(0, limit);
+
+  return activity;
 }
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
 
 export default {
   getOverview,
@@ -567,4 +597,5 @@ export default {
   getClientRevenue,
   getCashFlowForecast,
   getHealthMetrics,
+  getRecentActivity,
 };
