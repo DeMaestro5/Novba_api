@@ -51,4 +51,8 @@ export default {
   taxSummary: Joi.object().keys({
     year: Joi.number().integer().min(2000).max(2100).optional(),
   }),
+
+  scanReceipt: Joi.object().keys({
+    receiptImage: Joi.string().required().min(100),
+  }),
 };

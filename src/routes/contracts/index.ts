@@ -14,7 +14,15 @@ import {
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
-import { ContractStatus } from '@prisma/client';
+import {
+  ContractStatus,
+  EmailStatus,
+  EmailType,
+  ProposalStatus,
+} from '@prisma/client';
+import { generatePdf } from '../../services/pdf';
+import { sendEmail } from '../../services/Email.service';
+import { logEmail } from '../../services/emailLog';
 
 const router = express.Router();
 
@@ -227,17 +235,56 @@ router.post(
       throw new BadRequestError('Only draft contracts can be sent');
     }
 
+    const clientEmail = contract.client?.email;
+    if (!clientEmail) {
+      throw new BadRequestError('Client does not have an email address');
+    }
+
     // Mark as sent
     const updatedContract = await ContractRepo.markAsSent(
       req.params.id,
       req.user.id,
     );
 
-    // TODO: Send email to client with contract PDF
-    // This would involve:
-    // 1. Generate PDF from contract
-    // 2. Send email with attachment
-    // 3. Log email in EmailLog table
+    let emailSent = false;
+    let emailError: string | undefined;
+    try {
+      const htmlContent = generateContractHTML(contract, req.user);
+      const pdfBuffer = await generatePdf({
+        html: htmlContent,
+        filename: `contract-${contract.contractNumber}.pdf`,
+      });
+      if (pdfBuffer) {
+        const subject = `Contract: ${contract.title} – ${contract.contractNumber}`;
+        const html = `<p>Please find the attached contract.</p>`;
+        emailSent = await sendEmail({
+          to: clientEmail,
+          subject,
+          html,
+          attachments: [
+            {
+              filename: `contract-${contract.contractNumber}.pdf`,
+              content: pdfBuffer,
+            },
+          ],
+        });
+        if (!emailSent) emailError = 'Email provider did not confirm send';
+      } else {
+        emailError = 'PDF generation failed';
+      }
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'Send failed';
+    }
+
+    await logEmail({
+      userId: req.user.id,
+      recipient: clientEmail,
+      subject: `Contract: ${contract.title} – ${contract.contractNumber}`,
+      type: EmailType.CONTRACT_SENT,
+      status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+      sentAt: emailSent ? new Date() : undefined,
+      error: emailError ?? undefined,
+    });
 
     new SuccessResponse('Contract sent successfully', {
       contract: getContractData(updatedContract),
@@ -267,15 +314,47 @@ router.post(
       throw new BadRequestError('Cannot sign a terminated contract');
     }
 
-    // Mark as signed
     const signedContract = await ContractRepo.markAsSigned(
       req.params.id,
       req.user.id,
       req.body.signatureUrl,
     );
 
-    // TODO: Send confirmation email
-    // Update proposal status to APPROVED if linked
+    if (contract.proposalId) {
+      await ProposalRepo.updateStatus(
+        contract.proposalId,
+        req.user.id,
+        ProposalStatus.APPROVED,
+      );
+    }
+
+    const ownerEmail = req.user.email;
+    let emailSent = false;
+    let emailError: string | undefined;
+    if (ownerEmail) {
+      try {
+        const subject = `Contract signed: ${contract.title} – ${contract.contractNumber}`;
+        const html = `<p>Your contract <strong>${contract.contractNumber}</strong> (${contract.title}) has been signed.</p>`;
+        emailSent = await sendEmail({
+          to: ownerEmail,
+          subject,
+          html,
+        });
+        if (!emailSent) emailError = 'Email provider did not confirm send';
+      } catch (err) {
+        emailError = err instanceof Error ? err.message : 'Send failed';
+      }
+
+      await logEmail({
+        userId: req.user.id,
+        recipient: ownerEmail,
+        subject: `Contract signed: ${contract.title} – ${contract.contractNumber}`,
+        type: EmailType.CONTRACT_SIGNED,
+        status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+        sentAt: emailSent ? new Date() : undefined,
+        error: emailError ?? undefined,
+      });
+    }
 
     new SuccessResponse('Contract signed successfully', {
       contract: getContractData(signedContract),

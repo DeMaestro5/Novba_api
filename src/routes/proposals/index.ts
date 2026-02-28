@@ -6,11 +6,20 @@ import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
-import { getProposalData, calculateTotal, generateProposalHTML } from './utils';
+import {
+  getProposalData,
+  calculateTotal,
+  generateProposalHTML,
+} from './utils';
+import ContractRepo from '../../database/repository/ContractRepo';
+import { getContractData, contractTemplates } from '../contracts/utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
-import { ProposalStatus } from '@prisma/client';
+import { EmailStatus, EmailType, ProposalStatus } from '@prisma/client';
 import { checkUsageLimit } from '../../middleware/subscription-check';
+import { generatePdf } from '../../services/pdf';
+import { sendEmail } from '../../services/Email.service';
+import { logEmail } from '../../services/emailLog';
 
 const router = express.Router();
 
@@ -186,17 +195,57 @@ router.post(
       throw new BadRequestError('Only draft proposals can be sent');
     }
 
+    const clientEmail = proposal.client?.email;
+    if (!clientEmail) {
+      throw new BadRequestError('Client does not have an email address');
+    }
+
     // Mark as sent
     const updatedProposal = await ProposalRepo.markAsSent(
       req.params.id,
       req.user.id,
     );
 
-    // TODO: Send email to client with proposal PDF
-    // This would involve:
-    // 1. Generate PDF from proposal
-    // 2. Send email with attachment
-    // 3. Log email in EmailLog table
+    // Generate PDF, send email, log (best-effort; document is already marked sent)
+    let emailSent = false;
+    let emailError: string | undefined;
+    try {
+      const htmlContent = generateProposalHTML(proposal, req.user);
+      const pdfBuffer = await generatePdf({
+        html: htmlContent,
+        filename: `proposal-${proposal.proposalNumber}.pdf`,
+      });
+      if (pdfBuffer) {
+        const subject = `Proposal: ${proposal.title} – ${proposal.proposalNumber}`;
+        const html = `<p>Please find the attached proposal.</p>`;
+        emailSent = await sendEmail({
+          to: clientEmail,
+          subject,
+          html,
+          attachments: [
+            {
+              filename: `proposal-${proposal.proposalNumber}.pdf`,
+              content: pdfBuffer,
+            },
+          ],
+        });
+        if (!emailSent) emailError = 'Email provider did not confirm send';
+      } else {
+        emailError = 'PDF generation failed';
+      }
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'Send failed';
+    }
+
+    await logEmail({
+      userId: req.user.id,
+      recipient: clientEmail,
+      subject: `Proposal: ${proposal.title} – ${proposal.proposalNumber}`,
+      type: EmailType.PROPOSAL_SENT,
+      status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+      sentAt: emailSent ? new Date() : undefined,
+      error: emailError ?? undefined,
+    });
 
     new SuccessResponse('Proposal sent successfully', {
       proposal: getProposalData(updatedProposal),
@@ -235,7 +284,7 @@ router.post(
 
 /**
  * POST /api/v1/proposals/:id/convert-to-contract
- * Convert proposal to contract (placeholder for future implementation)
+ * Convert approved proposal to a contract (linked by proposalId)
  */
 router.post(
   '/:id/convert-to-contract',
@@ -252,12 +301,16 @@ router.post(
       );
     }
 
-    // TODO: Implement contract creation logic
-    // This will be implemented when Contract routes are built
-    // For now, return a placeholder response
+    const template = contractTemplates.service_agreement;
+    const contract = await ContractRepo.createFromProposal(
+      proposal.id,
+      req.user.id,
+      'service_agreement',
+      template.content,
+    );
 
-    new SuccessResponse('Contract conversion initiated', {
-      message: 'Contract creation feature coming soon',
+    new SuccessResponse('Contract created successfully', {
+      contract: getContractData(contract),
       proposalId: proposal.id,
     }).send(res);
   }),

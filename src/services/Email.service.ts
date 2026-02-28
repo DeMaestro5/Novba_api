@@ -6,11 +6,17 @@ import logger from '../core/Logger';
 // EMAIL PROVIDER INTERFACE
 // ============================================
 
-interface EmailOptions {
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
+export interface EmailOptions {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: EmailAttachment[];
 }
 
 interface EmailProvider {
@@ -38,12 +44,18 @@ class NodemailerProvider implements EmailProvider {
 
   async send(options: EmailOptions): Promise<string | null> {
     try {
+      const attachments = (options.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        content: a.content,
+      }));
+
       const info = await this.transporter.sendMail({
         from: process.env.SMTP_FROM,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
       logger.info('Email sent via Nodemailer', {
@@ -76,6 +88,11 @@ class ResendProvider implements EmailProvider {
 
   async send(options: EmailOptions): Promise<string | null> {
     try {
+      const attachments = (options.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        content: a.content.toString('base64'),
+      }));
+
       const { data, error } = await this.client.emails.send({
         from:
           process.env.EMAIL_FROM_ADDRESS || 'Novba <noreply@usenovbaai.com>',
@@ -83,6 +100,7 @@ class ResendProvider implements EmailProvider {
         subject: options.subject,
         html: options.html,
         text: options.text,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
       if (error) {
@@ -125,11 +143,19 @@ class EmailService {
   }
 
   /**
-   * Send any email
+   * Send any email (internal)
    */
   private async send(options: EmailOptions): Promise<boolean> {
     const emailId = await this.provider.send(options);
     return emailId !== null;
+  }
+
+  /**
+   * Send a transactional email with optional attachments.
+   * Use for proposal/invoice/contract send flows. Logging is done by the caller via logEmail().
+   */
+  async sendEmail(options: EmailOptions): Promise<boolean> {
+    return this.send(options);
   }
 
   /**
@@ -373,3 +399,4 @@ export const sendVerificationEmail =
   emailService.sendVerificationEmail.bind(emailService);
 export const sendWelcomeEmail =
   emailService.sendWelcomeEmail.bind(emailService);
+export const sendEmail = emailService.sendEmail.bind(emailService);
