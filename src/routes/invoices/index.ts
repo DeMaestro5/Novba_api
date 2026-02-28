@@ -4,10 +4,7 @@ import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProjectRepo from '../../database/repository/ProjectRepo';
 import { checkUsageLimit } from '../../middleware/subscription-check';
-import {
-  BadRequestError,
-  NotFoundError,
-} from '../../core/ApiError';
+import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
@@ -19,8 +16,11 @@ import {
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
-import { InvoiceStatus } from '@prisma/client';
-import paymentLink from './payment-link'
+import { EmailStatus, EmailType, InvoiceStatus } from '@prisma/client';
+import paymentLink from './payment-link';
+import { generatePdf } from '../../services/pdf';
+import { sendEmail } from '../../services/Email.service';
+import { logEmail } from '../../services/emailLog';
 
 const router = express.Router();
 
@@ -193,7 +193,7 @@ router.put(
 
     // Recalculate totals if line items provided
     const updateData: any = { ...req.body };
-    
+
     if (req.body.lineItems) {
       const totals = calculateInvoiceTotals(
         req.body.lineItems,
@@ -249,7 +249,6 @@ router.delete(
  */
 router.post(
   '/:id/send',
-  validator(schema.invoiceId),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
 
@@ -271,11 +270,49 @@ router.post(
       req.user.id,
     );
 
-    // TODO: Send email to client with invoice PDF
-    // This would involve:
-    // 1. Generate PDF from invoice
-    // 2. Send email with attachment
-    // 3. Log email in EmailLog table
+    const clientEmail = invoice.client!.email!;
+    let emailSent = false;
+    let emailError: string | undefined;
+    try {
+      const htmlContent = generateInvoiceHTML(invoice, req.user);
+      const pdfBuffer = await generatePdf({
+        html: htmlContent,
+        filename: `invoice-${invoice.invoiceNumber}.pdf`,
+      });
+      if (pdfBuffer) {
+        const subject = `Invoice ${invoice.invoiceNumber} from ${
+          req.user.name || 'Us'
+        }`;
+        const html = `<p>Please find your invoice attached.</p>`;
+        emailSent = await sendEmail({
+          to: clientEmail,
+          subject,
+          html,
+          attachments: [
+            {
+              filename: `invoice-${invoice.invoiceNumber}.pdf`,
+              content: pdfBuffer,
+            },
+          ],
+        });
+        if (!emailSent) emailError = 'Email provider did not confirm send';
+      } else {
+        emailError = 'PDF generation failed';
+      }
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : 'Send failed';
+    }
+
+    await logEmail({
+      userId: req.user.id,
+      recipient: clientEmail,
+      subject: `Invoice ${invoice.invoiceNumber}`,
+      type: EmailType.INVOICE_SENT,
+      status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+      invoiceId: invoice.id,
+      sentAt: emailSent ? new Date() : undefined,
+      error: emailError ?? undefined,
+    });
 
     new SuccessResponse('Invoice sent successfully', {
       invoice: getInvoiceData(updatedInvoice),
@@ -414,18 +451,68 @@ router.post(
       );
     }
 
-    // Mark all as sent
-    const sentInvoices = [];
+    const sentInvoices: Array<ReturnType<typeof getInvoiceData>> = [];
+    const results: Array<{ invoiceId: string; sent: boolean; error?: string }> =
+      [];
+
     for (const invoice of invoices) {
       const sent = await InvoiceRepo.markAsSent(invoice.id, req.user.id);
-      sentInvoices.push(sent);
-      
-      // TODO: Send email for each invoice
+      sentInvoices.push(getInvoiceData(sent));
+
+      const clientEmail = invoice.client!.email!;
+      let emailSent = false;
+      let emailError: string | undefined;
+      try {
+        const htmlContent = generateInvoiceHTML(invoice, req.user);
+        const pdfBuffer = await generatePdf({
+          html: htmlContent,
+          filename: `invoice-${invoice.invoiceNumber}.pdf`,
+        });
+        if (pdfBuffer) {
+          const subject = `Invoice ${invoice.invoiceNumber} from ${
+            req.user.name || 'Us'
+          }`;
+          emailSent = await sendEmail({
+            to: clientEmail,
+            subject,
+            html: '<p>Please find your invoice attached.</p>',
+            attachments: [
+              {
+                filename: `invoice-${invoice.invoiceNumber}.pdf`,
+                content: pdfBuffer,
+              },
+            ],
+          });
+          if (!emailSent) emailError = 'Email provider did not confirm send';
+        } else {
+          emailError = 'PDF generation failed';
+        }
+      } catch (err) {
+        emailError = err instanceof Error ? err.message : 'Send failed';
+      }
+
+      await logEmail({
+        userId: req.user.id,
+        recipient: clientEmail,
+        subject: `Invoice ${invoice.invoiceNumber}`,
+        type: EmailType.INVOICE_SENT,
+        status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+        invoiceId: invoice.id,
+        sentAt: emailSent ? new Date() : undefined,
+        error: emailError ?? undefined,
+      });
+
+      results.push({
+        invoiceId: invoice.id,
+        sent: emailSent,
+        ...(emailError && { error: emailError }),
+      });
     }
 
     new SuccessResponse('Invoices sent successfully', {
       count: sentInvoices.length,
-      invoices: sentInvoices.map(getInvoiceData),
+      invoices: sentInvoices,
+      results,
     }).send(res);
   }),
 );

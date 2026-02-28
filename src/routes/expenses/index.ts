@@ -1,7 +1,11 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
 import ExpenseRepo from '../../database/repository/ExpenseRepo';
-import {  NotFoundError } from '../../core/ApiError';
+import {
+  BadRequestError,
+  NotFoundError,
+  InternalError,
+} from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
@@ -9,8 +13,8 @@ import {
   getExpenseData,
   convertToCSV,
   calculateTotals,
-  mockReceiptScan,
 } from './utils';
+import { scanReceipt } from '../../services/receiptScan';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import { ExpenseCategory } from '@prisma/client';
@@ -292,25 +296,38 @@ router.post(
 
 /**
  * POST /api/v1/expenses/scan-receipt
- * Scan receipt and extract data (AI/OCR placeholder)
+ * Scan receipt image (base64) and extract vendor, amount, date, category via OpenAI Vision.
+ * Requires OPENAI_API_KEY. Returns extracted data for user to confirm before creating expense.
  */
 router.post(
   '/scan-receipt',
+  validator(schema.scanReceipt),
   asyncHandler(async (req: ProtectedRequest, res) => {
-    // TODO: Implement actual OCR/AI receipt scanning
-    // This would involve:
-    // 1. Receive image (base64 or file upload)
-    // 2. Send to Google Cloud Vision API / AWS Textract / OpenAI Vision
-    // 3. Extract vendor, amount, date, category
-    // 4. Return extracted data for user to confirm
-
-    // For now, return mock data
-    const scannedData = mockReceiptScan(req.body.receiptImage || '');
+    let extractedData;
+    try {
+      extractedData = await scanReceipt(req.body.receiptImage);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Receipt scan failed';
+      if (
+        message.includes('not configured') ||
+        message.includes('Invalid or too large') ||
+        message.includes('invalid API key')
+      ) {
+        throw new BadRequestError(message);
+      }
+      if (message.includes('rate limit')) {
+        throw new BadRequestError(message);
+      }
+      throw new InternalError('Receipt scan failed. Please try again.');
+    }
 
     new SuccessResponse('Receipt scanned successfully', {
-      extractedData: scannedData,
+      extractedData: {
+        ...extractedData,
+        confidence: 1,
+      },
       message:
-        'Please review the extracted data and create the expense manually. AI receipt scanning will be available in a future update.',
+        'Please review the extracted data and create the expense when ready.',
     }).send(res);
   }),
 );
