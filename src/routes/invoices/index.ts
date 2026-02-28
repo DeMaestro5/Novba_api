@@ -4,7 +4,11 @@ import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProjectRepo from '../../database/repository/ProjectRepo';
 import { checkUsageLimit } from '../../middleware/subscription-check';
-import { BadRequestError, NotFoundError } from '../../core/ApiError';
+import {
+  BadRequestError,
+  InternalError,
+  NotFoundError,
+} from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
@@ -393,12 +397,11 @@ router.patch(
 );
 
 /**
- * GET /api/v1/invoices/:id/pdf
- * Generate and download invoice as PDF
+ * GET /invoices/:id/pdf
+ * Return invoice as PDF (same template as email attachment; one canonical document).
  */
 router.get(
   '/:id/pdf',
-  validator(schema.invoiceId),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
 
@@ -406,20 +409,22 @@ router.get(
       throw new NotFoundError('Invoice not found');
     }
 
-    // Generate HTML content
     const htmlContent = generateInvoiceHTML(invoice, req.user);
+    const pdfBuffer = await generatePdf({
+      html: htmlContent,
+      filename: `invoice-${invoice.invoiceNumber}.pdf`,
+    });
 
-    // TODO: Convert HTML to PDF using Puppeteer or similar
-    // For now, return the HTML content
-    // In production, you'd use something like:
-    // const pdf = await generatePDF(htmlContent);
-    // res.setHeader('Content-Type', 'application/pdf');
-    // res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`);
-    // res.send(pdf);
+    if (!pdfBuffer) {
+      throw new InternalError('Failed to generate PDF');
+    }
 
-    // Temporary: Return HTML for testing
-    res.setHeader('Content-Type', 'text/html');
-    res.send(htmlContent);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`,
+    );
+    res.send(pdfBuffer);
   }),
 );
 

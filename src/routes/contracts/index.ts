@@ -3,7 +3,11 @@ import { SuccessResponse } from '../../core/ApiResponse';
 import ContractRepo from '../../database/repository/ContractRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProposalRepo from '../../database/repository/ProposalRepo';
-import { BadRequestError, NotFoundError } from '../../core/ApiError';
+import {
+  BadRequestError,
+  InternalError,
+  NotFoundError,
+} from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
@@ -363,8 +367,8 @@ router.post(
 );
 
 /**
- * GET /api/v1/contracts/:id/pdf
- * Generate and download contract as PDF
+ * GET /contracts/:id/pdf
+ * Return contract as PDF (same template as email attachment; one canonical document).
  */
 router.get(
   '/:id/pdf',
@@ -375,20 +379,22 @@ router.get(
       throw new NotFoundError('Contract not found');
     }
 
-    // Generate HTML content
     const htmlContent = generateContractHTML(contract, req.user);
+    const pdfBuffer = await generatePdf({
+      html: htmlContent,
+      filename: `contract-${contract.contractNumber}.pdf`,
+    });
 
-    // TODO: Convert HTML to PDF using Puppeteer or similar
-    // For now, return the HTML content
-    // In production, you'd use something like:
-    // const pdf = await generatePDF(htmlContent);
-    // res.setHeader('Content-Type', 'application/pdf');
-    // res.setHeader('Content-Disposition', `attachment; filename=contract-${contract.contractNumber}.pdf`);
-    // res.send(pdf);
+    if (!pdfBuffer) {
+      throw new InternalError('Failed to generate PDF');
+    }
 
-    // Temporary: Return HTML for testing
-    res.setHeader('Content-Type', 'text/html');
-    res.send(htmlContent);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=contract-${contract.contractNumber}.pdf`,
+    );
+    res.send(pdfBuffer);
   }),
 );
 
