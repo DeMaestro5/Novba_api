@@ -79,10 +79,25 @@ export const signupLimiter = rateLimit({
   },
 });
 
+// Rate limiter for OAuth initiation (prevent abuse)
+export const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 OAuth initiations per window
+  message: 'Too many OAuth attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: () => {
+    throw new TooManyRequestsError(
+      'Too many OAuth attempts, please try again later',
+    );
+  },
+});
+
 export default {
   verifyEmailLimiter,
   resendVerificationLimiter,
   signupLimiter,
   loginLimiter,
   forgotPasswordLimiter,
+  oauthLimiter,
 };

@@ -31,10 +31,11 @@ export type CreateUserData = {
   firstName?: string;
   lastName?: string;
   email: string;
-  password: string;
+  password?: string; // Optional for OAuth users (no password)
   profilePicUrl?: string;
   phone?: string;
   businessName?: string;
+  verified?: boolean; // true for OAuth users (skip email verification)
 };
 
 // User update data

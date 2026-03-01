@@ -119,17 +119,18 @@ async function create(
 
   if (!role) throw new Error(`Role '${roleCode}' not found`);
 
-  // Create user with role
+  // Create user with role (password and verified optional for OAuth)
   return prisma.user.create({
     data: {
       name: userData.name,
       firstName: userData.firstName,
       lastName: userData.lastName,
       email: userData.email,
-      password: userData.password,
+      password: userData.password ?? null,
       profilePicUrl: userData.profilePicUrl,
       phone: userData.phone,
       businessName: userData.businessName,
+      verified: userData.verified ?? false,
       roles: {
         create: {
           roleId: role.id,
