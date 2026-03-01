@@ -11,28 +11,31 @@ import profile from './profile';
 import forgotPassword from './auth/forgot-password';
 import resetPassword from './auth/reset-password';
 import emailVerification from './auth/emailVerification';
+import oauth from './auth/oauth';
 import onboarding from './onboarding';
 import clients from './clients';
 import proposals from './proposals';
 import contracts from './contracts';
 import projects from './projects';
-import invoices from './invoices'
-import expenses from './expenses'
-import payments from './payments'
-import stripeWebhook from './webhooks/stripe'
-import dashboard from './dashboard'
-import pricing from './pricing'
+import invoices from './invoices';
+import expenses from './expenses';
+import payments from './payments';
+import stripeWebhook from './webhooks/stripe';
+import dashboard from './dashboard';
+import pricing from './pricing';
 import portfolio from './portfolio';
-import publicPortfolioLink from './portfolio/public'
-import settings from './settings'
+import publicPortfolioLink from './portfolio/public';
+import settings from './settings';
 import subscription from './subscription';
 import stripeSubscriptionWebhook from './webhooks/stripe-subscription';
-
 
 const router = express.Router();
 
 router.use('/webhooks', stripeWebhook);
 router.use('/webhooks', stripeSubscriptionWebhook);
+
+// OAuth routes are PUBLIC — mount BEFORE apikey (no API key required for redirects)
+router.use('/auth/oauth', oauth);
 
 /*---------------------------------------------------------*/
 router.use(apikey);
@@ -56,14 +59,12 @@ router.use('/contracts', contracts);
 router.use('/projects', projects);
 router.use('/invoices', invoices);
 router.use('/expenses', expenses);
-router.use('/payments', payments)
+router.use('/payments', payments);
 router.use('/dashboard', dashboard);
 router.use('/pricing', pricing);
 router.use('/portfolio', portfolio);
 router.use('/settings', settings);
 router.use('/subscription', subscription);
-
-
 
 // Public portfolio MUST come LAST
 router.use('/', publicPortfolioLink);

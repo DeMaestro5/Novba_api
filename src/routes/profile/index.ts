@@ -13,11 +13,31 @@ import portfolioProfile from './portfolioProfile'
 
 const router = express.Router();
 
-router.use('/', portfolioProfile)
-
 /*-------------------------------------------------------------------------*/
 router.use(authentication);
 /*-------------------------------------------------------------------------*/
+
+router.get(
+  '/',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const user = await UserRepo.findById(req.user.id);
+    if (!user) throw new BadRequestError('User not found');
+
+    return new SuccessResponse('Profile retrieved', {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profilePicUrl: user.profilePicUrl,
+        verified: user.verified,
+        onboardingCompleted: user.onboardingCompleted,
+        plan: user.subscriptionTier?.toLowerCase() || 'free',
+      },
+    }).send(res);
+  }),
+);
 
 router.get(
   '/my',
@@ -61,5 +81,7 @@ router.put(
     return new SuccessResponse('Profile updated', data).send(res);
   }),
 );
+
+router.use('/', portfolioProfile);
 
 export default router;

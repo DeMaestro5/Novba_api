@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "skipLibCheck": true,
     "module": "CommonJS",
     // Import non-ES modules as default imports.
     "esModuleInterop": true,
