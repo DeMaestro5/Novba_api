@@ -104,18 +104,29 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
   });
 
   // ── Active Clients ───────────────────────────────────────────────────────
-  // "Active" = has at least one invoice in current period
   const [currentActiveClients, prevActiveClients] = await Promise.all([
+    // Active = has at least one non-draft invoice (ever)
     prisma.client.count({
       where: {
         userId,
-        invoices: { some: { createdAt: currentDateFilter } },
+        invoices: {
+          some: {
+            status: { in: ['SENT', 'PAID', 'OVERDUE', 'PARTIALLY_PAID'] },
+          },
+        },
       },
     }),
+    // Previous count: clients who had PAID invoices before current period
+    // (used only for percentageChange comparison)
     prisma.client.count({
       where: {
         userId,
-        invoices: { some: { createdAt: prevDateFilter } },
+        invoices: {
+          some: {
+            status: 'PAID',
+            paidAt: { lt: currentStart },
+          },
+        },
       },
     }),
   ]);
