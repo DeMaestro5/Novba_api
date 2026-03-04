@@ -167,7 +167,6 @@ router.post(
  */
 router.get(
   '/:id',
-  validator(schema.invoiceId),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
 
