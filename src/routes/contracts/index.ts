@@ -278,17 +278,24 @@ router.post(
       }
     } catch (err) {
       emailError = err instanceof Error ? err.message : 'Send failed';
+      console.error('Email send failed:', err);
+      // continue — don't throw, contract status is already updated
     }
 
-    await logEmail({
-      userId: req.user.id,
-      recipient: clientEmail,
-      subject: `Contract: ${contract.title} – ${contract.contractNumber}`,
-      type: EmailType.CONTRACT_SENT,
-      status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
-      sentAt: emailSent ? new Date() : undefined,
-      error: emailError ?? undefined,
-    });
+    try {
+      await logEmail({
+        userId: req.user.id,
+        recipient: clientEmail,
+        subject: `Contract: ${contract.title} – ${contract.contractNumber}`,
+        type: EmailType.CONTRACT_SENT,
+        status: emailSent ? EmailStatus.SENT : EmailStatus.FAILED,
+        sentAt: emailSent ? new Date() : undefined,
+        error: emailError ?? undefined,
+      });
+    } catch (logErr) {
+      console.error('Email log failed:', logErr);
+      // continue — logging failure must never cause a 500
+    }
 
     new SuccessResponse('Contract sent successfully', {
       contract: getContractData(updatedContract),
