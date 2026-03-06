@@ -22,7 +22,6 @@ router.use(authentication);
 /*---------------------------------------------------------*/
 
 /**
- * GET /api/v1/projects
  * Get all projects for authenticated user with pagination
  */
 router.get(
@@ -56,7 +55,6 @@ router.get(
 );
 
 /**
- * POST /api/v1/projects
  * Create new project
  */
 router.post(
@@ -137,7 +135,6 @@ router.post(
 );
 
 /**
- * GET /api/v1/projects/:id
  * Get single project by ID
  */
 router.get(
@@ -160,7 +157,6 @@ router.get(
 );
 
 /**
- * PUT /api/v1/projects/:id
  * Update project
  */
 router.put(
@@ -213,7 +209,6 @@ router.put(
 );
 
 /**
- * DELETE /api/v1/projects/:id
  * Delete project
  */
 router.delete(
@@ -243,7 +238,7 @@ router.delete(
 );
 
 /**
- * GET /api/v1/projects/:id/invoices
+
  * Get all invoices for a specific project
  */
 router.get(
