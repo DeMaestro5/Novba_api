@@ -233,7 +233,6 @@ router.put(
  */
 router.delete(
   '/:id',
-  validator(schema.invoiceId),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const exists = await InvoiceRepo.existsForUser(req.params.id, req.user.id);
     if (!exists) {
@@ -329,7 +328,6 @@ router.post(
  */
 router.post(
   '/:id/duplicate',
-  validator(schema.invoiceId),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const exists = await InvoiceRepo.existsForUser(req.params.id, req.user.id);
     if (!exists) {
@@ -366,7 +364,6 @@ router.post(
  */
 router.patch(
   '/:id/status',
-  validator(schema.invoiceId),
   validator(schema.updateStatus),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
