@@ -2,10 +2,7 @@ import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import PaymentRepo from '../../database/repository/PaymentRepo';
-import {
-  BadRequestError,
-  NotFoundError,
-} from '../../core/ApiError';
+import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import asyncHandler from '../../helpers/asyncHandler';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
@@ -15,10 +12,7 @@ import {
   generatePaymentLink,
 } from '../payments/utils';
 
-
 const router = express.Router();
-
-
 
 /*---------------------------------------------------------*/
 router.use(authentication);
@@ -44,7 +38,9 @@ router.get(
 
     // Check if invoice is cancelled
     if (invoice.status === InvoiceStatus.CANCELLED) {
-      throw new BadRequestError('Cannot create payment link for cancelled invoice');
+      throw new BadRequestError(
+        'Cannot create payment link for cancelled invoice',
+      );
     }
 
     // Calculate remaining amount

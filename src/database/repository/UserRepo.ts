@@ -169,6 +169,7 @@ async function findPrivateProfileById(
  * Update user information
  */
 async function updateInfo(id: string, data: UpdateUserData): Promise<User> {
+  console.log('[UserRepo.updateInfo] saving to DB:', JSON.stringify(data, null, 2));
   return prisma.user.update({
     where: { id },
     data: {

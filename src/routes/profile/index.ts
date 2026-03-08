@@ -34,6 +34,17 @@ router.get(
         verified: user.verified,
         onboardingCompleted: user.onboardingCompleted,
         plan: user.subscriptionTier?.toLowerCase() || 'free',
+        portfolioSlug: user.portfolioSlug,
+        portfolioTitle: user.portfolioTitle,
+        portfolioBio: user.portfolioBio,
+        portfolioLocation: user.portfolioLocation,
+        isAvailable: user.isAvailable,
+        linkedinUrl: user.linkedinUrl,
+        twitterUrl: user.twitterUrl,
+        githubUrl: user.githubUrl,
+        timezone: user.timezone,
+        dateFormat: user.dateFormat,
+        language: user.language,
       },
     }).send(res);
   }),
@@ -55,7 +66,22 @@ router.get(
     return new SuccessResponse(
       'success',
       {
-        ..._.pick(user, ['name', 'email', 'profilePicUrl']),
+        ..._.pick(user, [
+          'name',
+          'email',
+          'profilePicUrl',
+          'portfolioSlug',
+          'portfolioTitle',
+          'portfolioBio',
+          'portfolioLocation',
+          'isAvailable',
+          'linkedinUrl',
+          'twitterUrl',
+          'githubUrl',
+          'timezone',
+          'dateFormat',
+          'language',
+        ]),
         roles,
       },
     ).send(res);
@@ -69,14 +95,49 @@ router.put(
     const user = await UserRepo.findPrivateProfileById(req.user.id);
     if (!user) throw new BadRequestError('User not registered');
 
+    console.log('[PUT /profile] req.body:', JSON.stringify(req.body, null, 2));
     // UserRepo.updateInfo expects id (string) and data (Partial<User>)
-    const updateData: any = {};
-    if (req.body.name) updateData.name = req.body.name;
-    if (req.body.profilePicUrl) updateData.profilePicUrl = req.body.profilePicUrl;
+    // Only include fields that were actually sent in the request body
+    const updateData = {
+      ...(req.body.portfolioSlug !== undefined && { portfolioSlug: req.body.portfolioSlug || null }),
+      ...(req.body.portfolioTitle !== undefined && { portfolioTitle: req.body.portfolioTitle || null }),
+      ...(req.body.portfolioBio !== undefined && { portfolioBio: req.body.portfolioBio || null }),
+      ...(req.body.portfolioLocation !== undefined && { portfolioLocation: req.body.portfolioLocation || null }),
+      ...(req.body.isAvailable !== undefined && { isAvailable: req.body.isAvailable }),
+      ...(req.body.linkedinUrl !== undefined && { linkedinUrl: req.body.linkedinUrl || null }),
+      ...(req.body.twitterUrl !== undefined && { twitterUrl: req.body.twitterUrl || null }),
+      ...(req.body.githubUrl !== undefined && { githubUrl: req.body.githubUrl || null }),
+      ...(req.body.name !== undefined && { name: req.body.name || null }),
+      ...(req.body.timezone !== undefined && { timezone: req.body.timezone || null }),
+      ...(req.body.dateFormat !== undefined && { dateFormat: req.body.dateFormat || null }),
+      ...(req.body.language !== undefined && { language: req.body.language || null }),
+      ...(req.body.profilePicUrl !== undefined && { profilePicUrl: req.body.profilePicUrl || null }),
+    };
+
+    console.log('[PUT /profile] updateData:', JSON.stringify(updateData, null, 2));
 
     await UserRepo.updateInfo(user.id, updateData);
 
-    const data = _.pick({ ...user, ...updateData }, ['name', 'profilePicUrl']);
+    console.log('[PUT /profile] update complete');
+
+    const data = _.pick(
+      { ...user, ...updateData },
+      [
+        'name',
+        'profilePicUrl',
+        'portfolioSlug',
+        'portfolioTitle',
+        'portfolioBio',
+        'portfolioLocation',
+        'isAvailable',
+        'linkedinUrl',
+        'twitterUrl',
+        'githubUrl',
+        'timezone',
+        'dateFormat',
+        'language',
+      ],
+    );
 
     return new SuccessResponse('Profile updated', data).send(res);
   }),

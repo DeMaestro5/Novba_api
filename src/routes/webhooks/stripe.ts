@@ -37,11 +37,15 @@ router.post(
       // Handle payment-related events
       switch (event.type) {
         case 'payment_intent.succeeded':
-          await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+          await handlePaymentIntentSucceeded(
+            event.data.object as Stripe.PaymentIntent,
+          );
           break;
 
         case 'payment_intent.payment_failed':
-          await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+          await handlePaymentIntentFailed(
+            event.data.object as Stripe.PaymentIntent,
+          );
           break;
 
         default:
@@ -56,7 +60,9 @@ router.post(
   },
 );
 
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentIntentSucceeded(
+  paymentIntent: Stripe.PaymentIntent,
+) {
   console.log('Processing payment_intent.succeeded:', paymentIntent.id);
 
   const invoiceId = paymentIntent.metadata?.invoiceId;

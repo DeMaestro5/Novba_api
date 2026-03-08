@@ -25,6 +25,7 @@ import dashboard from './dashboard';
 import pricing from './pricing';
 import portfolio from './portfolio';
 import publicPortfolioLink from './portfolio/public';
+import uploadRoutes from './upload';
 import settings from './settings';
 import subscription from './subscription';
 import stripeSubscriptionWebhook from './webhooks/stripe-subscription';
@@ -36,6 +37,9 @@ router.use('/webhooks', stripeSubscriptionWebhook);
 
 // OAuth routes are PUBLIC — mount BEFORE apikey (no API key required for redirects)
 router.use('/auth/oauth', oauth);
+
+// Public portfolio — unauthenticated, mount BEFORE apikey (GET /p/:slug)
+router.use('/p', publicPortfolioLink);
 
 /*---------------------------------------------------------*/
 router.use(apikey);
@@ -63,10 +67,8 @@ router.use('/payments', payments);
 router.use('/dashboard', dashboard);
 router.use('/pricing', pricing);
 router.use('/portfolio', portfolio);
+router.use('/upload', uploadRoutes);
 router.use('/settings', settings);
 router.use('/subscription', subscription);
-
-// Public portfolio MUST come LAST
-router.use('/', publicPortfolioLink);
 
 export default router;
