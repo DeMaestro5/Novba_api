@@ -16,11 +16,12 @@ router.get(
   '/:slug',
   asyncHandler(async (req, res) => {
     const { slug } = req.params;
+    console.log('[PUBLIC PORTFOLIO] looking up slug:', req.params.slug);
 
-    // First, try to find user by portfolio slug
+    // First, try to find user by portfolio slug (case-insensitive: slug is stored lowercase)
     const user = await prisma.user.findFirst({
       where: {
-        portfolioSlug: slug,
+        portfolioSlug: slug?.toLowerCase() ?? slug,
       },
       select: {
         id: true,
@@ -37,6 +38,9 @@ router.get(
         githubUrl: true,
       },
     });
+
+    console.log('[PUBLIC PORTFOLIO] user found:', user ? user.id : 'NOT FOUND');
+    console.log('[PUBLIC PORTFOLIO] portfolioSlug in DB:', user?.portfolioSlug);
 
     if (!user) {
       throw new NotFoundError('Portfolio not found');

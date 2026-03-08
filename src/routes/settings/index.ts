@@ -142,14 +142,18 @@ router.get(
     // Get user's current Stripe settings
     const stripeSettings = await SettingsRepo.getStripeSettings(req.user.id);
 
-    console.log(stripeSettings)
+    console.log(stripeSettings);
 
     let accountId = stripeSettings?.stripeAccountId;
 
     // If no Stripe account exists, create one
     if (!accountId) {
-      const profileSettings = await SettingsRepo.getProfileSettings(req.user.id);
-      const businessSettings = await SettingsRepo.getBusinessSettings(req.user.id);
+      const profileSettings = await SettingsRepo.getProfileSettings(
+        req.user.id,
+      );
+      const businessSettings = await SettingsRepo.getBusinessSettings(
+        req.user.id,
+      );
 
       accountId = await createStripeConnectAccount(
         profileSettings?.email || '',
@@ -165,7 +169,7 @@ router.get(
 
     // Create account link for onboarding
     const connectUrl = await createStripeConnectLink(accountId);
-    console.log('ConnectUrl', connectUrl)
+    console.log('ConnectUrl', connectUrl);
 
     new SuccessResponse('Stripe Connect URL generated successfully', {
       connectUrl,

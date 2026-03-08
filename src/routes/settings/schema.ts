@@ -8,6 +8,23 @@ export default {
     timezone: Joi.string().optional(),
     dateFormat: Joi.string().optional().valid('MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'),
     language: Joi.string().optional().valid('en', 'es', 'fr', 'de'),
+
+    // Portfolio profile fields
+    portfolioSlug: Joi.string()
+      .optional()
+      .allow('')
+      .min(3)
+      .max(50)
+      .lowercase()
+      .pattern(/^[a-z0-9-]+$/)
+      .message('Portfolio URL can only contain lowercase letters, numbers, and hyphens'),
+    portfolioTitle: Joi.string().optional().allow('').max(100),
+    portfolioBio: Joi.string().optional().allow('').max(500),
+    portfolioLocation: Joi.string().optional().allow('').max(100),
+    isAvailable: Joi.boolean().optional(),
+    linkedinUrl: Joi.string().uri().optional().allow(''),
+    twitterUrl: Joi.string().uri().optional().allow(''),
+    githubUrl: Joi.string().uri().optional().allow(''),
   }),
 
   business: Joi.object().keys({
