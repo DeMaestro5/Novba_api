@@ -19,6 +19,8 @@ export async function getUserData(user: UserWithRoles) {
   const data = {
     id: user.id, // Use 'id' instead of '_id'
     name: user.name,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
     roles: roles,
     profilePicUrl: user.profilePicUrl,
   };

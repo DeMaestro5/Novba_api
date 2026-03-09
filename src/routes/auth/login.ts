@@ -20,7 +20,8 @@ router.post(
   loginLimiter,
   validator(schema.credential),
   asyncHandler(async (req: PublicRequest, res) => {
-    const user = await UserRepo.findByEmail(req.body.email);
+    const { email, password, rememberMe = false } = req.body;
+    const user = await UserRepo.findByEmail(email);
     if (!user) throw new BadRequestError('User not registered');
     if (!user.password) throw new BadRequestError('Credential not set');
 
@@ -30,7 +31,7 @@ router.post(
       );
     }
 
-    const match = await bcrypt.compare(req.body.password, user.password);
+    const match = await bcrypt.compare(password, user.password);
     if (!match) throw new AuthFailureError('Authentication failure');
 
     const accessTokenKey = crypto.randomBytes(64).toString('hex');
@@ -38,7 +39,7 @@ router.post(
 
     // KeystoreRepo.create expects userId (string), not user object
     await KeystoreRepo.create(user.id, accessTokenKey, refreshTokenKey);
-    const tokens = await createTokens(user, accessTokenKey, refreshTokenKey);
+    const tokens = await createTokens(user, accessTokenKey, refreshTokenKey, rememberMe);
     const userData = await getUserData(user);
 
     new SuccessResponse('Login Success', {

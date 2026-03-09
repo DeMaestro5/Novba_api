@@ -34,10 +34,17 @@ router.post(
     const verificationToken = generateVerificationToken();
     const verificationTokenExpiry = generateTokenExpiry(24);
 
+    const fullName: string = (req.body.name ?? '').trim();
+    const spaceIndex = fullName.indexOf(' ');
+    const firstName = spaceIndex > -1 ? fullName.slice(0, spaceIndex) : fullName;
+    const lastName = spaceIndex > -1 ? fullName.slice(spaceIndex + 1).trim() || null : null;
+
     // UserRepo.create returns UserWithRoles (includes roles)
     const createdUser = await UserRepo.create(
       {
-        name: req.body.name,
+        name: fullName,
+        firstName,
+        lastName: lastName ?? undefined,
         email: req.body.email,
         profilePicUrl: req.body.profilePicUrl,
         password: passwordHash,
@@ -87,9 +94,16 @@ router.post(
     const refreshTokenKey = crypto.randomBytes(64).toString('hex');
     const passwordHash = await bcrypt.hash(req.body.password, 10);
 
+    const fullNameAdmin: string = (req.body.name ?? '').trim();
+    const spaceIndexAdmin = fullNameAdmin.indexOf(' ');
+    const firstNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(0, spaceIndexAdmin) : fullNameAdmin;
+    const lastNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(spaceIndexAdmin + 1).trim() || null : null;
+
     const createdAdmin = await UserRepo.create(
       {
-        name: req.body.name,
+        name: fullNameAdmin,
+        firstName: firstNameAdmin,
+        lastName: lastNameAdmin ?? undefined,
         email: req.body.email,
         profilePicUrl: req.body.profilePicUrl,
         password: passwordHash,
