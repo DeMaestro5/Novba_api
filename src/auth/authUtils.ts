@@ -31,14 +31,20 @@ export const createTokens = async (
   user: UserWithRoles,
   accessTokenKey: string,
   refreshTokenKey: string,
+  rememberMe: boolean = false,
 ): Promise<Tokens> => {
+  const accessTokenValidity = parseInt(process.env.ACCESS_TOKEN_VALIDITY_SEC ?? '900');
+  const refreshTokenValidity = rememberMe
+    ? parseInt(process.env.REFRESH_TOKEN_REMEMBER_ME_SEC ?? '2592000')
+    : parseInt(process.env.REFRESH_TOKEN_VALIDITY_SEC ?? '604800');
+
   const accessToken = await JWT.encode(
     new JwtPayload(
       tokenInfo.issuer,
       tokenInfo.audience,
       user.id, // Prisma User.id is a string UUID
       accessTokenKey,
-      tokenInfo.accessTokenValidity,
+      accessTokenValidity,
     ),
   );
 
@@ -50,7 +56,7 @@ export const createTokens = async (
       tokenInfo.audience,
       user.id, // Prisma User.id is a string UUID
       refreshTokenKey,
-      tokenInfo.refreshTokenValidity,
+      refreshTokenValidity,
     ),
   );
 
