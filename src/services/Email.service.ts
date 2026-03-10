@@ -387,6 +387,103 @@ Need help? Reply to this email.
       text,
     });
   }
+
+  async sendReminderEmail(
+    to: string,
+    clientName: string,
+    invoiceNumber: string,
+    invoiceTotal: string,
+    dueDate: string,
+    daysOffset: number, // negative = before due, positive = overdue
+    paymentLinkUrl?: string,
+  ): Promise<boolean> {
+    const isOverdue = daysOffset > 0;
+    const absDays = Math.abs(daysOffset);
+
+    const subject = isOverdue
+      ? `[Overdue ${absDays}d] Invoice ${invoiceNumber} — Payment Required`
+      : `[Reminder] Invoice ${invoiceNumber} due in ${absDays} day${absDays !== 1 ? 's' : ''}`;
+
+    const headingColor = isOverdue ? '#dc2626' : '#ea580c';
+    const badgeText = isOverdue
+      ? `${absDays} day${absDays !== 1 ? 's' : ''} overdue`
+      : `Due in ${absDays} day${absDays !== 1 ? 's' : ''}`;
+    const badgeBg = isOverdue ? '#fef2f2' : '#fff7ed';
+    const badgeColor = isOverdue ? '#dc2626' : '#ea580c';
+
+    const paymentSection = paymentLinkUrl
+      ? `<div style="text-align:center;margin:28px 0;">
+        <a href="${paymentLinkUrl}" style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-weight:bold;font-size:15px;">
+          Pay Now →
+        </a>
+       </div>`
+      : '';
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"><title>${subject}</title></head>
+    <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
+      <div style="background:#fff;padding:40px;border-radius:12px;border:1px solid #e5e7eb;">
+        <div style="margin-bottom:24px;">
+          <span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span>
+        </div>
+        <h1 style="color:${headingColor};margin:0 0 8px 0;font-size:22px;">
+          ${isOverdue ? 'Payment Overdue' : 'Payment Reminder'}
+        </h1>
+        <span style="display:inline-block;background:${badgeBg};color:${badgeColor};font-size:13px;font-weight:700;padding:4px 12px;border-radius:99px;margin-bottom:20px;">
+          ${badgeText}
+        </span>
+        <p style="color:#374151;margin:0 0 16px 0;">
+          Hi ${clientName},
+        </p>
+        <p style="color:#374151;margin:0 0 24px 0;">
+          ${isOverdue
+            ? `This is a reminder that invoice <strong>${invoiceNumber}</strong> for <strong>${invoiceTotal}</strong> was due on <strong>${dueDate}</strong> and remains unpaid.`
+            : `This is a friendly reminder that invoice <strong>${invoiceNumber}</strong> for <strong>${invoiceTotal}</strong> is due on <strong>${dueDate}</strong>.`
+          }
+        </p>
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#6b7280;font-size:13px;">Invoice</span>
+            <span style="color:#111827;font-weight:700;font-size:13px;">${invoiceNumber}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="color:#6b7280;font-size:13px;">Amount</span>
+            <span style="color:#111827;font-weight:700;font-size:13px;">${invoiceTotal}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#6b7280;font-size:13px;">Due Date</span>
+            <span style="color:${headingColor};font-weight:700;font-size:13px;">${dueDate}</span>
+          </div>
+        </div>
+        ${paymentSection}
+        <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">
+          This is an automated reminder sent by Novba on behalf of your service provider. 
+          If you have already made payment, please disregard this message.
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+    const text = `
+${subject}
+
+Hi ${clientName},
+
+${isOverdue
+  ? `Invoice ${invoiceNumber} for ${invoiceTotal} was due on ${dueDate} and remains unpaid.`
+  : `Invoice ${invoiceNumber} for ${invoiceTotal} is due on ${dueDate}.`
+}
+
+${paymentLinkUrl ? `Pay now: ${paymentLinkUrl}` : ''}
+
+© ${new Date().getFullYear()} Novba
+  `.trim();
+
+    return this.send({ to, subject, html, text });
+  }
 }
 
 // Export singleton instance
@@ -399,4 +496,6 @@ export const sendVerificationEmail =
   emailService.sendVerificationEmail.bind(emailService);
 export const sendWelcomeEmail =
   emailService.sendWelcomeEmail.bind(emailService);
+export const sendReminderEmail =
+  emailService.sendReminderEmail.bind(emailService);
 export const sendEmail = emailService.sendEmail.bind(emailService);

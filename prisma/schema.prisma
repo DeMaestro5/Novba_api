@@ -236,6 +236,7 @@ model User {
   projects       Project[]
   emailLogs      EmailLog[]
   subscriptions  Subscription[]
+  reminderSettings  ReminderSettings?
   
   @@index([email])
   @@index([stripeCustomerId])
@@ -682,4 +683,24 @@ model Subscription {
   @@index([userId])
   @@index([stripeSubscriptionId])
   @@map("subscriptions")
+}
+
+// ============================================
+// REMINDER SETTINGS
+// ============================================
+
+model ReminderSettings {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+
+  enabled       Boolean  @default(true)
+  beforeDueDays Int[]    @default([3, 7])
+  afterDueDays  Int[]    @default([1, 7, 14])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reminder_settings")
 }

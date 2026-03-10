@@ -67,4 +67,16 @@ export default {
   logo: Joi.object().keys({
     logoUrl: Joi.string().uri().required(),
   }),
+
+  reminders: Joi.object().keys({
+    enabled: Joi.boolean().required(),
+    beforeDueDays: Joi.array()
+      .items(Joi.number().integer().min(1).max(60))
+      .max(5)
+      .required(),
+    afterDueDays: Joi.array()
+      .items(Joi.number().integer().min(1).max(90))
+      .max(5)
+      .required(),
+  }),
 };

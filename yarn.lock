@@ -2895,6 +2895,11 @@
   resolved "https://registry.npmjs.org/@types/newrelic/-/newrelic-9.14.3.tgz"
   integrity sha512-mMQptlvOQXCDPHo2xzi8VK3ytYNIaVO41iGPVPckTbL8lrHsjy4+67c8Ui3iBtwu5/ugImnLAU7Gv+900krD3g==
 
+"@types/node-cron@^3.0.11":
+  version "3.0.11"
+  resolved "https://registry.npmjs.org/@types/node-cron/-/node-cron-3.0.11.tgz"
+  integrity sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==
+
 "@types/node@*", "@types/node@^22.19.3", "@types/node@>=12.12.47", "@types/node@>=13.7.0", "@types/node@>=16":
   version "22.19.3"
   resolved "https://registry.npmjs.org/@types/node/-/node-22.19.3.tgz"
@@ -6017,6 +6022,11 @@ node-addon-api@^5.0.0:
   version "5.0.0"
   resolved "https://registry.npmjs.org/node-addon-api/-/node-addon-api-5.0.0.tgz"
   integrity sha512-CvkDw2OEnme7ybCykJpVcKH+uAOLV2qLqiyla128dN9TkEWfrYmxG6C2boDe5KcNQqZF3orkqzGgOMvZ/JNekA==
+
+node-cron@^4.2.1:
+  version "4.2.1"
+  resolved "https://registry.npmjs.org/node-cron/-/node-cron-4.2.1.tgz"
+  integrity sha512-lgimEHPE/QDgFlywTd8yTR61ptugX3Qer29efeyWw2rv259HtGBNn1vZVmp8lB9uo9wC0t/AT4iGqXxia+CJFg==
 
 node-fetch@^2.6.7:
   version "2.7.0"
