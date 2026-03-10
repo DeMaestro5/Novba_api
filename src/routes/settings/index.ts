@@ -1,6 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
 import SettingsRepo from '../../database/repository/SettingsRepo';
+import ReminderRepo from '../../database/repository/ReminderRepo';
 import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
 import schema from './schema';
@@ -241,6 +242,54 @@ router.post(
 
     new SuccessResponse('Stripe account disconnected successfully', {
       disconnected: true,
+    }).send(res);
+  }),
+);
+
+/**
+ * GET /settings/reminders
+ * Get user reminder settings
+ */
+router.get(
+  '/reminders',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    let settings = await ReminderRepo.findByUserId(req.user.id);
+
+    // Return defaults if not configured yet
+    if (!settings) {
+      settings = await ReminderRepo.upsert(req.user.id, {});
+    }
+
+    new SuccessResponse('Reminder settings fetched', {
+      reminders: {
+        enabled: settings.enabled,
+        beforeDueDays: settings.beforeDueDays,
+        afterDueDays: settings.afterDueDays,
+      },
+    }).send(res);
+  }),
+);
+
+/**
+ * PUT /settings/reminders
+ * Update reminder settings
+ */
+router.put(
+  '/reminders',
+  validator(schema.reminders),
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const settings = await ReminderRepo.upsert(req.user.id, {
+      enabled: req.body.enabled,
+      beforeDueDays: req.body.beforeDueDays,
+      afterDueDays: req.body.afterDueDays,
+    });
+
+    new SuccessResponse('Reminder settings updated', {
+      reminders: {
+        enabled: settings.enabled,
+        beforeDueDays: settings.beforeDueDays,
+        afterDueDays: settings.afterDueDays,
+      },
     }).send(res);
   }),
 );
