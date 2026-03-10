@@ -4,6 +4,7 @@ export interface ReminderSettingsData {
   enabled?: boolean;
   beforeDueDays?: number[];
   afterDueDays?: number[];
+  userConfigured?: boolean;
 }
 
 async function findByUserId(userId: string) {
@@ -20,11 +21,13 @@ async function upsert(userId: string, data: ReminderSettingsData) {
       enabled: data.enabled ?? true,
       beforeDueDays: data.beforeDueDays ?? [3, 7],
       afterDueDays: data.afterDueDays ?? [1, 7, 14],
+      userConfigured: data.userConfigured ?? false,
     },
     update: {
       ...(data.enabled !== undefined && { enabled: data.enabled }),
       ...(data.beforeDueDays !== undefined && { beforeDueDays: data.beforeDueDays }),
       ...(data.afterDueDays !== undefined && { afterDueDays: data.afterDueDays }),
+      ...(data.userConfigured !== undefined && { userConfigured: data.userConfigured }),
       updatedAt: new Date(),
     },
   });
@@ -38,6 +41,7 @@ async function findAllEnabled() {
       userId: true,
       beforeDueDays: true,
       afterDueDays: true,
+      userConfigured: true,
     },
   });
 }
