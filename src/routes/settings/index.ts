@@ -265,6 +265,7 @@ router.get(
         enabled: settings.enabled,
         beforeDueDays: settings.beforeDueDays,
         afterDueDays: settings.afterDueDays,
+        userConfigured: settings.userConfigured,
       },
     }).send(res);
   }),
@@ -282,6 +283,7 @@ router.put(
       enabled: req.body.enabled,
       beforeDueDays: req.body.beforeDueDays,
       afterDueDays: req.body.afterDueDays,
+      userConfigured: true,
     });
 
     new SuccessResponse('Reminder settings updated', {
@@ -289,6 +291,7 @@ router.put(
         enabled: settings.enabled,
         beforeDueDays: settings.beforeDueDays,
         afterDueDays: settings.afterDueDays,
+        userConfigured: settings.userConfigured,
       },
     }).send(res);
   }),
