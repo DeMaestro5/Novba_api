@@ -39,6 +39,16 @@ router.post(
     const firstName = spaceIndex > -1 ? fullName.slice(0, spaceIndex) : fullName;
     const lastName = spaceIndex > -1 ? fullName.slice(spaceIndex + 1).trim() || null : null;
 
+    const rawName = req.body.name ?? req.body.email.split('@')[0];
+    const autoSlug =
+      rawName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') +
+      '-' +
+      Math.random().toString(36).slice(2, 6);
+
     // UserRepo.create returns UserWithRoles (includes roles)
     const createdUser = await UserRepo.create(
       {
@@ -48,7 +58,8 @@ router.post(
         email: req.body.email,
         profilePicUrl: req.body.profilePicUrl,
         password: passwordHash,
-      },
+        portfolioSlug: autoSlug,
+      } as any,
       RoleCode.USER,
     );
 
@@ -99,6 +110,16 @@ router.post(
     const firstNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(0, spaceIndexAdmin) : fullNameAdmin;
     const lastNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(spaceIndexAdmin + 1).trim() || null : null;
 
+    const rawName = req.body.name ?? req.body.email.split('@')[0];
+    const autoSlug =
+      rawName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') +
+      '-' +
+      Math.random().toString(36).slice(2, 6);
+
     const createdAdmin = await UserRepo.create(
       {
         name: fullNameAdmin,
@@ -107,7 +128,8 @@ router.post(
         email: req.body.email,
         profilePicUrl: req.body.profilePicUrl,
         password: passwordHash,
-      },
+        portfolioSlug: autoSlug,
+      } as any,
       RoleCode.ADMIN,
     );
 

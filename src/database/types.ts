@@ -35,6 +35,7 @@ export type CreateUserData = {
   profilePicUrl?: string;
   phone?: string;
   businessName?: string;
+  portfolioSlug?: string;
   verified?: boolean; // true for OAuth users (skip email verification)
 };
 

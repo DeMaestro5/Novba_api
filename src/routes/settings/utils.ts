@@ -125,7 +125,15 @@ export function formatSettings(settings: any) {
       timezone: settings.timezone,
       dateFormat: settings.dateFormat,
       language: settings.language,
-      portfolioSlug: settings.portfolioSlug,
+      portfolioSlug:
+        settings.portfolioSlug ??
+        (settings.name
+          ? settings.name
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+          : ''),
       portfolioTitle: settings.portfolioTitle,
       portfolioBio: settings.portfolioBio,
       portfolioLocation: settings.portfolioLocation,
