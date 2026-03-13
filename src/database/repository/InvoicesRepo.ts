@@ -34,6 +34,7 @@ export interface UpdateInvoiceData {
   currency?: string;
   notes?: string;
   terms?: string;
+  scheduledSendAt?: Date | null;
   lineItems?: Array<{
     description: string;
     quantity: number;
