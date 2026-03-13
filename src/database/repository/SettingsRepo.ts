@@ -135,6 +135,15 @@ async function getAllSettings(userId: string) {
       timezone: true,
       dateFormat: true,
       language: true,
+      // Portfolio
+      portfolioSlug: true,
+      portfolioTitle: true,
+      portfolioBio: true,
+      portfolioLocation: true,
+      isAvailable: true,
+      linkedinUrl: true,
+      twitterUrl: true,
+      githubUrl: true,
       // Business
       businessName: true,
       businessAddress: true,
@@ -150,6 +159,7 @@ async function getAllSettings(userId: string) {
       // Invoice Defaults
       defaultCurrency: true,
       defaultPaymentTerms: true,
+      defaultPaymentTermsCustom: true,
       defaultInvoiceNotes: true,
       defaultInvoiceTerms: true,
       defaultTaxRate: true,

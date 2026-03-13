@@ -276,7 +276,7 @@ router.post(
     let emailSent = false;
     let emailError: string | undefined;
     try {
-      const htmlContent = generateInvoiceHTML(invoice, req.user);
+      const htmlContent = generateInvoiceHTML({ ...invoice, status: updatedInvoice.status }, req.user);
       const pdfBuffer = await generatePdf({
         html: htmlContent,
         filename: `invoice-${invoice.invoiceNumber}.pdf`,
@@ -318,6 +318,77 @@ router.post(
 
     new SuccessResponse('Invoice sent successfully', {
       invoice: getInvoiceData(updatedInvoice),
+    }).send(res);
+  }),
+);
+
+/**
+ * POST /invoices/:id/schedule
+ * Schedule a DRAFT invoice to be sent at a future date/time
+ */
+router.post(
+  '/:id/schedule',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const { scheduledSendAt } = req.body;
+
+    if (!scheduledSendAt) {
+      throw new BadRequestError('scheduledSendAt is required');
+    }
+
+    const sendAt = new Date(scheduledSendAt);
+    if (isNaN(sendAt.getTime())) {
+      throw new BadRequestError('scheduledSendAt must be a valid date');
+    }
+
+    if (sendAt <= new Date()) {
+      throw new BadRequestError('scheduledSendAt must be in the future');
+    }
+
+    const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
+    if (!invoice) {
+      throw new NotFoundError('Invoice not found');
+    }
+
+    if (invoice.status !== InvoiceStatus.DRAFT) {
+      throw new BadRequestError('Only DRAFT invoices can be scheduled');
+    }
+
+    if (!invoice.client.email) {
+      throw new BadRequestError('Client does not have an email address');
+    }
+
+    const updated = await InvoiceRepo.update(req.params.id, req.user.id, {
+      scheduledSendAt: sendAt,
+    });
+
+    new SuccessResponse('Invoice scheduled successfully', {
+      invoice: getInvoiceData(updated),
+    }).send(res);
+  }),
+);
+
+/**
+ * DELETE /invoices/:id/schedule
+ * Cancel a scheduled send — clears scheduledSendAt, invoice stays DRAFT
+ */
+router.delete(
+  '/:id/schedule',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
+    if (!invoice) {
+      throw new NotFoundError('Invoice not found');
+    }
+
+    if (!invoice.scheduledSendAt) {
+      throw new BadRequestError('This invoice has no scheduled send');
+    }
+
+    const updated = await InvoiceRepo.update(req.params.id, req.user.id, {
+      scheduledSendAt: null,
+    });
+
+    new SuccessResponse('Schedule cancelled successfully', {
+      invoice: getInvoiceData(updated),
     }).send(res);
   }),
 );

@@ -20,6 +20,7 @@ import { getContractData, contractTemplates } from '../contracts/utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import { EmailStatus, EmailType, ProposalStatus } from '@prisma/client';
+import UserRepo from '../../database/repository/UserRepo';
 import { checkUsageLimit } from '../../middleware/subscription-check';
 import { generatePdf } from '../../services/pdf';
 import { sendEmail } from '../../services/Email.service';
@@ -214,13 +215,14 @@ router.post(
     let emailSent = false;
     let emailError: string | undefined;
     try {
-      const htmlContent = generateProposalHTML(proposal, req.user);
-      const pdfBuffer = await generatePdf({
-        html: htmlContent,
-        filename: `proposal-${proposal.proposalNumber}.pdf`,
-      });
-      if (pdfBuffer) {
-        const subject = `Proposal: ${proposal.title} – ${proposal.proposalNumber}`;
+    const fullUser = await UserRepo.findById(req.user.id);
+    const htmlContent = generateProposalHTML(proposal, fullUser ?? req.user);
+    const pdfBuffer = await generatePdf({
+      html: htmlContent,
+      filename: `proposal-${proposal.proposalNumber}.pdf`,
+    });
+    if (pdfBuffer) {
+      const subject = `Proposal: ${proposal.title} – ${proposal.proposalNumber}`;
         const html = `<p>Please find the attached proposal.</p>`;
         emailSent = await sendEmail({
           to: clientEmail,
@@ -333,7 +335,8 @@ router.get(
       throw new NotFoundError('Proposal not found');
     }
 
-    const htmlContent = generateProposalHTML(proposal, req.user);
+    const fullUser = await UserRepo.findById(req.user.id);
+    const htmlContent = generateProposalHTML(proposal, fullUser ?? req.user);
     const pdfBuffer = await generatePdf({
       html: htmlContent,
       filename: `proposal-${proposal.proposalNumber}.pdf`,

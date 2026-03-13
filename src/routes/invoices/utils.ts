@@ -63,6 +63,7 @@ export function getInvoiceData(invoice: InvoiceWithDetails | Invoice) {
     pdfUrl: invoice.pdfUrl,
     sentAt: invoice.sentAt,
     paidAt: invoice.paidAt,
+    scheduledSendAt: invoice.scheduledSendAt,
     lastReminderSentAt: invoice.lastReminderSentAt,
     reminderCount: invoice.reminderCount,
     createdAt: invoice.createdAt,

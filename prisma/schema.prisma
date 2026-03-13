@@ -350,6 +350,7 @@ model Invoice {
   
   sentAt              DateTime?
   paidAt              DateTime?
+  scheduledSendAt     DateTime?
   lastReminderSentAt  DateTime?
   reminderCount       Int       @default(0)
   
