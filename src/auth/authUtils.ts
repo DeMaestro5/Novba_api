@@ -20,7 +20,6 @@ export const validateTokenData = (payload: JwtPayload): boolean => {
     !payload.prm ||
     payload.iss !== tokenInfo.issuer ||
     payload.aud !== tokenInfo.audience ||
-    !payload.sub || // Just check it's a non-empty string (UUID format)
     typeof payload.sub !== 'string'
   )
     throw new AuthFailureError('Invalid Access Token');
@@ -33,16 +32,19 @@ export const createTokens = async (
   refreshTokenKey: string,
   rememberMe: boolean = false,
 ): Promise<Tokens> => {
-  const accessTokenValidity = parseInt(process.env.ACCESS_TOKEN_VALIDITY_SEC ?? '900');
+  // Defaults: 1hr access, 30-day refresh, 90-day remember-me
+  const accessTokenValidity = parseInt(
+    process.env.ACCESS_TOKEN_VALIDITY_SEC ?? '3600',
+  );
   const refreshTokenValidity = rememberMe
-    ? parseInt(process.env.REFRESH_TOKEN_REMEMBER_ME_SEC ?? '2592000')
-    : parseInt(process.env.REFRESH_TOKEN_VALIDITY_SEC ?? '604800');
+    ? parseInt(process.env.REFRESH_TOKEN_REMEMBER_ME_SEC ?? '7776000')
+    : parseInt(process.env.REFRESH_TOKEN_VALIDITY_SEC ?? '2592000');
 
   const accessToken = await JWT.encode(
     new JwtPayload(
       tokenInfo.issuer,
       tokenInfo.audience,
-      user.id, // Prisma User.id is a string UUID
+      user.id,
       accessTokenKey,
       accessTokenValidity,
     ),
@@ -54,7 +56,7 @@ export const createTokens = async (
     new JwtPayload(
       tokenInfo.issuer,
       tokenInfo.audience,
-      user.id, // Prisma User.id is a string UUID
+      user.id,
       refreshTokenKey,
       refreshTokenValidity,
     ),
@@ -63,7 +65,7 @@ export const createTokens = async (
   if (!refreshToken) throw new InternalError();
 
   return {
-    accessToken: accessToken,
-    refreshToken: refreshToken,
+    accessToken,
+    refreshToken,
   } as Tokens;
 };
