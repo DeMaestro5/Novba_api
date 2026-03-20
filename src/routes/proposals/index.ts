@@ -25,6 +25,7 @@ import { checkUsageLimit } from '../../middleware/subscription-check';
 import { generatePdf } from '../../services/pdf';
 import { sendEmail } from '../../services/Email.service';
 import { logEmail } from '../../services/emailLog';
+import prisma from '../../database';
 
 const router = express.Router();
 
@@ -110,6 +111,60 @@ router.post(
 
     new SuccessResponse('Proposal created successfully', {
       proposal: getProposalData(proposal),
+    }).send(res);
+  }),
+);
+
+/**
+ * GET /api/v1/proposals/stats
+ * Get proposal stats for authenticated user
+ */
+router.get(
+  '/stats',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
+
+    const grouped = await prisma.proposal.groupBy({
+      by: ['status'],
+      where: { userId },
+      _count: { id: true },
+      _sum: { totalAmount: true },
+    });
+
+    const totalCount = grouped.reduce((s, g) => s + g._count.id, 0);
+
+    const byStatus: Record<string, { count: number; value: number }> = {};
+    for (const g of grouped) {
+      byStatus[g.status] = {
+        count: g._count.id,
+        value: Number(g._sum.totalAmount ?? 0),
+      };
+    }
+
+    const get = (status: string) =>
+      byStatus[status] ?? { count: 0, value: 0 };
+
+    const pipelineValue =
+      get('SENT').value + get('VIEWED').value + get('APPROVED').value;
+
+    new SuccessResponse('Proposal stats fetched successfully', {
+      stats: {
+        total: totalCount,
+        pipelineValue,
+        awaitingResponse: get('SENT').count + get('VIEWED').count,
+        approved: {
+          count: get('APPROVED').count,
+          value: get('APPROVED').value,
+        },
+        byStatus: {
+          DRAFT:    get('DRAFT'),
+          SENT:     get('SENT'),
+          VIEWED:   get('VIEWED'),
+          APPROVED: get('APPROVED'),
+          DECLINED: get('DECLINED'),
+          EXPIRED:  get('EXPIRED'),
+        },
+      },
     }).send(res);
   }),
 );
