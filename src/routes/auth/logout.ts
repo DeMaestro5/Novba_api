@@ -15,7 +15,7 @@ router.delete(
   '/',
   asyncHandler(async (req: ProtectedRequest, res) => {
     // KeystoreRepo.remove expects id (string), not _id
-    await KeystoreRepo.remove(req.keystore.id);
+    await KeystoreRepo.deleteAllForUser(req.user.id);
     new SuccessMsgResponse('Logout success').send(res);
   }),
 );

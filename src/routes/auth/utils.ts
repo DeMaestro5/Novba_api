@@ -2,7 +2,7 @@ import { UserWithRoles } from '../../database/types';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import _ from 'lodash';
 
-export const enum AccessMode {
+export enum AccessMode {
   LOGIN = 'LOGIN',
   SIGNUP = 'SIGNUP',
 }
@@ -21,7 +21,7 @@ export async function getUserData(user: UserWithRoles) {
     name: user.name,
     firstName: user.firstName ?? null,
     lastName: user.lastName ?? null,
-    roles: roles,
+    roles,
     profilePicUrl: user.profilePicUrl,
   };
   return data;

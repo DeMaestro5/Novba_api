@@ -50,7 +50,7 @@ router.use(permission(Permission.GENERAL));
 router.use('/signup', signup);
 router.use('/login', login);
 router.use('/logout', logout);
-router.use('/token', token);
+router.use('/refresh', token);
 router.use('/credential', credential);
 router.use('/profile', profile);
 router.use('/', emailVerification);

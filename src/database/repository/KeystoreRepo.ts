@@ -114,7 +114,25 @@ async function removeOlderThan(days: number): Promise<{ count: number }> {
   });
 }
 
+async function deleteAllForUser(userId: string): Promise<void> {
+  await prisma.keystore.deleteMany({ where: { userId } });
+}
+
+async function findForSecondaryKey(
+  userId: string,
+  secondaryKey: string,
+): Promise<Keystore | null> {
+  return prisma.keystore.findFirst({
+    where: {
+      userId,
+      secondaryKey,
+      status: true,
+    },
+  });
+}
+
 export default {
+  findForSecondaryKey,
   findForKey,
   find,
   create,
@@ -123,4 +141,5 @@ export default {
   deactivate,
   findAllForUser,
   removeOlderThan,
+  deleteAllForUser,
 };
