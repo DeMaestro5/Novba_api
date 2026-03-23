@@ -69,4 +69,50 @@ router.post(
   }),
 );
 
+router.post(
+  '/profile-image',
+  upload.single('image'),
+  asyncHandler(async (req: ProtectedRequest, res: Response) => {
+    if (!req.file) {
+      throw new BadRequestError('No image file provided');
+    }
+
+    const result = await new Promise<{ secure_url: string; public_id: string }>(
+      (resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: `novba/profiles/${req.user.id}`,
+            transformation: [
+              { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+              { quality: 'auto', fetch_format: 'auto' },
+            ],
+            resource_type: 'image',
+          },
+          (error, result) => {
+            if (error || !result) return reject(error ?? new Error('Upload failed'));
+            resolve(result);
+          },
+        );
+        stream.end(req.file!.buffer);
+      },
+    );
+
+    if (!result?.secure_url) {
+      throw new InternalError('Failed to upload image to CDN');
+    }
+
+    // Save profilePicUrl directly to user record
+    const prisma = (await import('../../database')).default;
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { profilePicUrl: result.secure_url },
+    });
+
+    new SuccessResponse('Profile photo uploaded successfully', {
+      profilePicUrl: result.secure_url,
+      publicId: result.public_id,
+    }).send(res);
+  }),
+);
+
 export default router;

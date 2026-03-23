@@ -8,6 +8,14 @@ export interface ProfileSettings {
   timezone?: string;
   dateFormat?: string;
   language?: string;
+  portfolioSlug?: string | null;
+  portfolioTitle?: string | null;
+  portfolioBio?: string | null;
+  portfolioLocation?: string | null;
+  isAvailable?: boolean;
+  linkedinUrl?: string | null;
+  twitterUrl?: string | null;
+  githubUrl?: string | null;
 }
 
 export interface BusinessSettings {
@@ -180,9 +188,19 @@ async function getAllSettings(userId: string) {
  * Update profile settings
  */
 async function updateProfileSettings(userId: string, data: ProfileSettings) {
+  // Lowercase portfolioSlug if provided
+  const updateData = {
+    ...data,
+    ...(data.portfolioSlug !== undefined && {
+      portfolioSlug: data.portfolioSlug
+        ? data.portfolioSlug.toLowerCase().trim()
+        : null,
+    }),
+  };
+
   return prisma.user.update({
     where: { id: userId },
-    data,
+    data: updateData,
     select: {
       id: true,
       name: true,
@@ -191,6 +209,14 @@ async function updateProfileSettings(userId: string, data: ProfileSettings) {
       timezone: true,
       dateFormat: true,
       language: true,
+      portfolioSlug: true,
+      portfolioTitle: true,
+      portfolioBio: true,
+      portfolioLocation: true,
+      isAvailable: true,
+      linkedinUrl: true,
+      twitterUrl: true,
+      githubUrl: true,
     },
   });
 }

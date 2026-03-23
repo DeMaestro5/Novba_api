@@ -55,6 +55,44 @@ router.put(
       req.body,
     );
 
+    // Sync portfolio fields back to User table so public portfolio
+    // lookup at GET /p/:slug works correctly
+    const userSyncData: Record<string, unknown> = {};
+
+    if (req.body.portfolioSlug !== undefined) {
+      userSyncData.portfolioSlug = req.body.portfolioSlug
+        ? req.body.portfolioSlug.toLowerCase().trim()
+        : null;
+    }
+    if (req.body.portfolioTitle !== undefined) {
+      userSyncData.portfolioTitle = req.body.portfolioTitle ?? null;
+    }
+    if (req.body.portfolioBio !== undefined) {
+      userSyncData.portfolioBio = req.body.portfolioBio ?? null;
+    }
+    if (req.body.portfolioLocation !== undefined) {
+      userSyncData.portfolioLocation = req.body.portfolioLocation ?? null;
+    }
+    if (req.body.isAvailable !== undefined) {
+      userSyncData.isAvailable = req.body.isAvailable;
+    }
+    if (req.body.linkedinUrl !== undefined) {
+      userSyncData.linkedinUrl = req.body.linkedinUrl ?? null;
+    }
+    if (req.body.twitterUrl !== undefined) {
+      userSyncData.twitterUrl = req.body.twitterUrl ?? null;
+    }
+    if (req.body.githubUrl !== undefined) {
+      userSyncData.githubUrl = req.body.githubUrl ?? null;
+    }
+
+    if (Object.keys(userSyncData).length > 0) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: userSyncData,
+      });
+    }
+
     new SuccessResponse('Profile settings updated successfully', {
       settings: updatedSettings,
     }).send(res);

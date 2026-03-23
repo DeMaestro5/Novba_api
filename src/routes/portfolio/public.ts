@@ -27,6 +27,7 @@ router.get(
         id: true,
         name: true,
         email: true,
+        profilePicUrl: true,
         portfolioSlug: true,
         portfolioTitle: true,
         portfolioBio: true,
@@ -65,7 +66,7 @@ router.get(
         name: user.name,
         title: user.portfolioTitle || 'Freelancer',
         bio: user.portfolioBio,
-        avatar: user.portfolioAvatar,
+        avatar: user.portfolioAvatar ?? user.profilePicUrl ?? null,
         location: user.portfolioLocation,
         isAvailable: user.isAvailable,
         email: user.email, // Contact email
