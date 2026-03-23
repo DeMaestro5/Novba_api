@@ -115,4 +115,50 @@ router.post(
   }),
 );
 
+router.post(
+  '/business-logo',
+  upload.single('image'),
+  asyncHandler(async (req: ProtectedRequest, res: Response) => {
+    if (!req.file) {
+      throw new BadRequestError('No image file provided');
+    }
+
+    const result = await new Promise<{ secure_url: string; public_id: string }>(
+      (resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: `novba/logos/${req.user.id}`,
+            transformation: [
+              { width: 600, height: 300, crop: 'fit' },
+              { quality: 'auto', fetch_format: 'auto' },
+            ],
+            resource_type: 'image',
+          },
+          (error, result) => {
+            if (error || !result) return reject(error ?? new Error('Upload failed'));
+            resolve(result);
+          },
+        );
+        stream.end(req.file!.buffer);
+      },
+    );
+
+    if (!result?.secure_url) {
+      throw new InternalError('Failed to upload logo to CDN');
+    }
+
+    // Save businessLogo directly to user record
+    const prisma = (await import('../../database')).default;
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { businessLogo: result.secure_url },
+    });
+
+    new SuccessResponse('Business logo uploaded successfully', {
+      logoUrl: result.secure_url,
+      publicId: result.public_id,
+    }).send(res);
+  }),
+);
+
 export default router;
