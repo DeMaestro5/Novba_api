@@ -53,7 +53,9 @@ async function calculateAverageRate(userId: string): Promise<number> {
   if (rates.length === 0) return 0;
 
   // Filter for hourly rates (quantities that look like hours)
-  const hourlyRates = rates.filter((r) => r.quantity > 0 && r.quantity <= 200);
+  const hourlyRates = rates.filter(
+    (r) => r.quantity > 0 && r.quantity <= 200 && r.rate > 0 && r.rate <= 500
+  );
 
   if (hourlyRates.length === 0) return 0;
 

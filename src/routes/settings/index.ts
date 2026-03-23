@@ -15,6 +15,7 @@ import {
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
+import prisma from '../../database';
 
 const router = express.Router();
 
