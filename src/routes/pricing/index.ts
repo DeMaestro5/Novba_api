@@ -33,7 +33,7 @@ router.get(
     const message = formatPricingMessage(
       insights.summary.isUndercharging,
       insights.summary.percentBelow,
-      insights.summary.potentialIncrease || 0
+      insights.summary.potentialIncrease || 0,
     );
 
     const percentile = calculatePercentile(
@@ -104,11 +104,37 @@ router.post(
       experienceLevel,
     );
 
-    const message = formatPricingMessage(
-      analysis.isUndercharging,
-      analysis.percentBelow,
-      analysis.potentialAnnualIncrease || 0
-    );
+    // Enhance with Gemini AI insights
+    const { analyzeRateWithAI } = await import('../../services/GeminiService');
+    let aiInsights: {
+      message: string;
+      suggestedRate: number;
+      confidence: number;
+      reasoning: string;
+      negotiationTips: string[];
+    } | null = null;
+    try {
+      aiInsights = await analyzeRateWithAI({
+        role: category,
+        experienceLevel,
+        currentRate: rate,
+        marketMin: analysis.marketMin ?? 0,
+        marketMax: analysis.marketMax ?? 0,
+        marketMedian: analysis.marketMedian,
+        marketAverage: analysis.marketAverage,
+        sampleSize: analysis.sampleSize ?? 500,
+      });
+    } catch (err) {
+      console.error('[Gemini] analyze-rate failed:', err);
+    }
+
+    const message =
+      aiInsights?.message ??
+      formatPricingMessage(
+        analysis.isUndercharging,
+        analysis.percentBelow,
+        analysis.potentialAnnualIncrease || 0,
+      );
 
     const percentile = calculatePercentile(
       rate,
@@ -120,9 +146,15 @@ router.post(
       analysis: {
         yourRate: rate,
         ...analysis,
+        suggestedRate: aiInsights?.suggestedRate ?? analysis.recommendedRate,
         alert: message,
         percentile,
-        confidenceDescription: getConfidenceDescription(analysis.confidence),
+        confidenceDescription: getConfidenceDescription(
+          aiInsights?.confidence ?? analysis.confidence,
+        ),
+        reasoning: aiInsights?.reasoning ?? null,
+        negotiationTips: aiInsights?.negotiationTips ?? [],
+        aiPowered: !!aiInsights,
       },
     }).send(res);
   }),
@@ -135,17 +167,44 @@ router.post(
 router.get(
   '/recommendations',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const recommendations = await PricingRepo.generateRecommendations(
-      req.user.id,
+    const base = await PricingRepo.generateRecommendations(req.user.id);
+
+    // Try Gemini-enhanced recommendations
+    const { generateRecommendationsWithAI } = await import(
+      '../../services/GeminiService'
     );
+    let recommendations = base.recommendations;
+    let aiPowered = false;
+
+    if (base.marketData) {
+      try {
+        const user = await (
+          await import('../../database')
+        ).default.user.findUnique({
+          where: { id: req.user.id },
+          select: { industry: true, experienceLevel: true },
+        });
+        recommendations = await generateRecommendationsWithAI({
+          currentRate: base.currentRate,
+          marketMedian: base.marketData.medianRate,
+          experienceLevel: user?.experienceLevel ?? 'INTERMEDIATE',
+          category: user?.industry ?? 'Freelance',
+          invoiceCount: 0,
+        });
+        aiPowered = true;
+      } catch {
+        // Fall back to static recommendations
+      }
+    }
 
     new SuccessResponse('Pricing recommendations fetched successfully', {
-      currentRate: recommendations.currentRate,
-      recommendations: recommendations.recommendations,
-      marketBenchmark: recommendations.marketData,
-      actionItems: recommendations.recommendations
+      currentRate: base.currentRate,
+      recommendations,
+      marketBenchmark: base.marketData,
+      actionItems: recommendations
         .filter((r) => r.priority === 'HIGH')
         .map((r) => r.title),
+      aiPowered,
     }).send(res);
   }),
 );
@@ -160,13 +219,34 @@ router.post(
   asyncHandler(async (req: ProtectedRequest, res) => {
     const { description, projectType } = req.body;
 
-    const estimate = ProjectEstimatorRepo.estimateProject(description, projectType ?? 'FIXED');
+    // Try Gemini first, fall back to static estimator
+    const { estimateProjectWithAI } = await import(
+      '../../services/GeminiService'
+    );
+    let estimate;
+    let aiPowered = false;
+
+    try {
+      estimate = await estimateProjectWithAI({
+        description,
+        projectType: projectType ?? 'FIXED',
+      });
+      aiPowered = true;
+    } catch {
+      estimate = ProjectEstimatorRepo.estimateProject(
+        description,
+        projectType ?? 'FIXED',
+      );
+    }
 
     new SuccessResponse('Project estimated successfully', {
       estimate: {
         ...estimate,
         currency: 'USD',
-        disclaimer: 'Estimates based on market data analysis. Actual project value may vary based on client, scope, and market conditions.',
+        aiPowered,
+        disclaimer: aiPowered
+          ? 'AI-powered estimate based on current market rates and project analysis. Actual value may vary based on client budget and final scope.'
+          : 'Estimate based on market data analysis. Actual project value may vary based on client, scope, and market conditions.',
       },
     }).send(res);
   }),

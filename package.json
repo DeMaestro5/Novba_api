@@ -27,6 +27,7 @@
   "author": "Ossiakeme Stephen",
   "license": "Apache-2.0",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "5.22.0",
     "axios": "^1.13.6",
     "bcrypt": "^5.1.1",
