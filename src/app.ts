@@ -18,6 +18,8 @@ process.on('uncaughtException', (e) => {
 
 const app = express();
 
+app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(
   express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 }),
