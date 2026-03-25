@@ -37,6 +37,7 @@ export class JwtPayload {
 }
 
 async function readPublicKey(): Promise<string> {
+  if (process.env.JWT_PUBLIC_KEY) return process.env.JWT_PUBLIC_KEY.replace(/\\n/g, '\n');
   return promisify(readFile)(
     path.join(__dirname, '../../keys/public.pem'),
     'utf8',
@@ -44,6 +45,7 @@ async function readPublicKey(): Promise<string> {
 }
 
 async function readPrivateKey(): Promise<string> {
+  if (process.env.JWT_PRIVATE_KEY) return process.env.JWT_PRIVATE_KEY.replace(/\\n/g, '\n');
   return promisify(readFile)(
     path.join(__dirname, '../../keys/private.pem'),
     'utf8',
