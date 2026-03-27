@@ -359,6 +359,18 @@ async function findMany(
   });
 }
 
+/**
+ * Count users with lifetime access (founding members)
+ */
+async function countFoundingMembers(): Promise<number> {
+  return prisma.user.count({
+    where: {
+      status: true,
+      lifetimeAccess: true,
+    },
+  });
+}
+
 export default {
   exists,
   findById,
@@ -379,4 +391,5 @@ export default {
   softDelete,
   count,
   findMany,
+  countFoundingMembers,
 };

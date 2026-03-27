@@ -23,7 +23,7 @@ export const SUBSCRIPTION_TIERS = {
   PRO: {
     id: 'PRO',
     name: 'Pro',
-    price: 29, // USD per month
+    price: 15, // USD per month
     stripePriceId: process.env.STRIPE_PRO_PRICE_ID,
     features: {
       clients: 'unlimited',
@@ -45,7 +45,7 @@ export const SUBSCRIPTION_TIERS = {
   STUDIO: {
     id: 'STUDIO',
     name: 'Studio',
-    price: 99, // USD per month
+    price: 39, // USD per month
     stripePriceId: process.env.STRIPE_STUDIO_PRICE_ID,
     features: {
       clients: 'unlimited',
@@ -82,12 +82,13 @@ export function hasFeatureAccess(
   feature: string,
 ): boolean {
   const tierConfig = SUBSCRIPTION_TIERS[tier];
-  const featureValue = tierConfig.features[feature as keyof typeof tierConfig.features];
-  
+  const featureValue =
+    tierConfig.features[feature as keyof typeof tierConfig.features];
+
   if (featureValue === 'unlimited' || featureValue === true) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -101,11 +102,11 @@ export function isWithinLimit(
 ): boolean {
   const tierConfig = SUBSCRIPTION_TIERS[tier];
   const limit = tierConfig.limits[limitType as keyof typeof tierConfig.limits];
-  
+
   if (limit === 'unlimited') {
     return true;
   }
-  
+
   return currentUsage < (limit as number);
 }
 

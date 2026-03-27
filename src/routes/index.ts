@@ -29,6 +29,7 @@ import uploadRoutes from './upload';
 import settings from './settings';
 import subscription from './subscription';
 import stripeSubscriptionWebhook from './webhooks/stripe-subscription';
+import publicRouter from './public';
 
 const router = express.Router();
 
@@ -40,6 +41,9 @@ router.use('/auth/oauth', oauth);
 
 // Public portfolio — unauthenticated, mount BEFORE apikey (GET /p/:slug)
 router.use('/p', publicPortfolioLink);
+
+// Public endpoints — no auth required
+router.use('/public', publicRouter);
 
 /*---------------------------------------------------------*/
 router.use(apikey);
