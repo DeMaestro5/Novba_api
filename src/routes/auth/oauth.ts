@@ -60,6 +60,19 @@ async function handleOAuthCallback(
         RoleCode.USER,
       );
 
+      // Grant lifetime Pro access to first 100 founding members
+      const foundingCount = await UserRepo.countFoundingMembers();
+      const isFoundingMember = foundingCount < 100;
+
+      if (isFoundingMember) {
+        await UserRepo.updateInfo(user.id, {
+          subscriptionTier: 'PRO',
+          subscriptionStatus: 'ACTIVE',
+          lifetimeAccess: true,
+          lifetimeAccessGrantedAt: new Date(),
+        });
+      }
+
       Logger.info(
         `New OAuth user created: ${profile.email} via ${profile.provider}`,
       );
