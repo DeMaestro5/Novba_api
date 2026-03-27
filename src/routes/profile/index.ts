@@ -4,12 +4,12 @@ import UserRepo from '../../database/repository/UserRepo';
 import { ProtectedRequest } from 'app-request';
 import { BadRequestError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
+import { getUserData } from '../auth/utils';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import _ from 'lodash';
 import authentication from '../../auth/authentication';
-import portfolioProfile from './portfolioProfile'
-
+import portfolioProfile from './portfolioProfile';
 
 const router = express.Router();
 
@@ -23,29 +23,10 @@ router.get(
     const user = await UserRepo.findById(req.user.id);
     if (!user) throw new BadRequestError('User not found');
 
+    const userData = await getUserData(user);
+
     return new SuccessResponse('Profile retrieved', {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        profilePicUrl: user.profilePicUrl,
-        verified: user.verified,
-        onboardingCompleted: user.onboardingCompleted,
-        plan: user.subscriptionTier?.toLowerCase() || 'free',
-        portfolioSlug: user.portfolioSlug,
-        portfolioTitle: user.portfolioTitle,
-        portfolioBio: user.portfolioBio,
-        portfolioLocation: user.portfolioLocation,
-        isAvailable: user.isAvailable,
-        linkedinUrl: user.linkedinUrl,
-        twitterUrl: user.twitterUrl,
-        githubUrl: user.githubUrl,
-        timezone: user.timezone,
-        dateFormat: user.dateFormat,
-        language: user.language,
-      },
+      user: userData,
     }).send(res);
   }),
 );
@@ -63,28 +44,25 @@ router.get(
       code: ur.role.code,
     }));
 
-    return new SuccessResponse(
-      'success',
-      {
-        ..._.pick(user, [
-          'name',
-          'email',
-          'profilePicUrl',
-          'portfolioSlug',
-          'portfolioTitle',
-          'portfolioBio',
-          'portfolioLocation',
-          'isAvailable',
-          'linkedinUrl',
-          'twitterUrl',
-          'githubUrl',
-          'timezone',
-          'dateFormat',
-          'language',
-        ]),
-        roles,
-      },
-    ).send(res);
+    return new SuccessResponse('success', {
+      ..._.pick(user, [
+        'name',
+        'email',
+        'profilePicUrl',
+        'portfolioSlug',
+        'portfolioTitle',
+        'portfolioBio',
+        'portfolioLocation',
+        'isAvailable',
+        'linkedinUrl',
+        'twitterUrl',
+        'githubUrl',
+        'timezone',
+        'dateFormat',
+        'language',
+      ]),
+      roles,
+    }).send(res);
   }),
 );
 
@@ -99,45 +77,69 @@ router.put(
     // UserRepo.updateInfo expects id (string) and data (Partial<User>)
     // Only include fields that were actually sent in the request body
     const updateData = {
-      ...(req.body.portfolioSlug !== undefined && { portfolioSlug: req.body.portfolioSlug || null }),
-      ...(req.body.portfolioTitle !== undefined && { portfolioTitle: req.body.portfolioTitle || null }),
-      ...(req.body.portfolioBio !== undefined && { portfolioBio: req.body.portfolioBio || null }),
-      ...(req.body.portfolioLocation !== undefined && { portfolioLocation: req.body.portfolioLocation || null }),
-      ...(req.body.isAvailable !== undefined && { isAvailable: req.body.isAvailable }),
-      ...(req.body.linkedinUrl !== undefined && { linkedinUrl: req.body.linkedinUrl || null }),
-      ...(req.body.twitterUrl !== undefined && { twitterUrl: req.body.twitterUrl || null }),
-      ...(req.body.githubUrl !== undefined && { githubUrl: req.body.githubUrl || null }),
+      ...(req.body.portfolioSlug !== undefined && {
+        portfolioSlug: req.body.portfolioSlug || null,
+      }),
+      ...(req.body.portfolioTitle !== undefined && {
+        portfolioTitle: req.body.portfolioTitle || null,
+      }),
+      ...(req.body.portfolioBio !== undefined && {
+        portfolioBio: req.body.portfolioBio || null,
+      }),
+      ...(req.body.portfolioLocation !== undefined && {
+        portfolioLocation: req.body.portfolioLocation || null,
+      }),
+      ...(req.body.isAvailable !== undefined && {
+        isAvailable: req.body.isAvailable,
+      }),
+      ...(req.body.linkedinUrl !== undefined && {
+        linkedinUrl: req.body.linkedinUrl || null,
+      }),
+      ...(req.body.twitterUrl !== undefined && {
+        twitterUrl: req.body.twitterUrl || null,
+      }),
+      ...(req.body.githubUrl !== undefined && {
+        githubUrl: req.body.githubUrl || null,
+      }),
       ...(req.body.name !== undefined && { name: req.body.name || null }),
-      ...(req.body.timezone !== undefined && { timezone: req.body.timezone || null }),
-      ...(req.body.dateFormat !== undefined && { dateFormat: req.body.dateFormat || null }),
-      ...(req.body.language !== undefined && { language: req.body.language || null }),
-      ...(req.body.profilePicUrl !== undefined && { profilePicUrl: req.body.profilePicUrl || null }),
+      ...(req.body.timezone !== undefined && {
+        timezone: req.body.timezone || null,
+      }),
+      ...(req.body.dateFormat !== undefined && {
+        dateFormat: req.body.dateFormat || null,
+      }),
+      ...(req.body.language !== undefined && {
+        language: req.body.language || null,
+      }),
+      ...(req.body.profilePicUrl !== undefined && {
+        profilePicUrl: req.body.profilePicUrl || null,
+      }),
     };
 
-    console.log('[PUT /profile] updateData:', JSON.stringify(updateData, null, 2));
+    console.log(
+      '[PUT /profile] updateData:',
+      JSON.stringify(updateData, null, 2),
+    );
 
     await UserRepo.updateInfo(user.id, updateData);
 
     console.log('[PUT /profile] update complete');
 
-    const data = _.pick(
-      { ...user, ...updateData },
-      [
-        'name',
-        'profilePicUrl',
-        'portfolioSlug',
-        'portfolioTitle',
-        'portfolioBio',
-        'portfolioLocation',
-        'isAvailable',
-        'linkedinUrl',
-        'twitterUrl',
-        'githubUrl',
-        'timezone',
-        'dateFormat',
-        'language',
-      ],
-    );
+    const data = _.pick({ ...user, ...updateData }, [
+      'name',
+      'profilePicUrl',
+      'portfolioSlug',
+      'portfolioTitle',
+      'portfolioBio',
+      'portfolioLocation',
+      'isAvailable',
+      'linkedinUrl',
+      'twitterUrl',
+      'githubUrl',
+      'timezone',
+      'dateFormat',
+      'language',
+    ]);
 
     return new SuccessResponse('Profile updated', data).send(res);
   }),
