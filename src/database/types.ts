@@ -65,6 +65,10 @@ export type UpdateUserData = {
   averageHourlyRate?: number;
   industry?: string;
   experienceLevel?: string;
+  subscriptionTier?: 'FREE' | 'PRO' | 'STUDIO';
+  subscriptionStatus?: 'ACTIVE' | 'CANCELLED' | 'PAST_DUE' | 'UNPAID' | 'TRIALING';
+  lifetimeAccess?: boolean;
+  lifetimeAccessGrantedAt?: Date | null;
 };
 
 // ============================================
