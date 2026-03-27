@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import asyncHandler from '../../helpers/asyncHandler';
 import UserRepo from '../../database/repository/UserRepo';
 import logger from '../../core/Logger';
@@ -19,6 +20,9 @@ import {
   resendVerificationLimiter,
   verifyEmailLimiter,
 } from '../../helpers/rateLimiters';
+import KeystoreRepo from '../../database/repository/KeystoreRepo';
+import { createTokens } from '../../auth/authUtils';
+import { getUserData } from './utils';
 
 const router = express.Router();
 
@@ -80,14 +84,22 @@ router.post(
       });
     });
 
-    // 6. Send success response
-    return new SuccessResponse(
-      'Email verified successfully! You can now log in.',
-      {
-        verified: true,
-        email: user.email,
+    // 6. Generate auth tokens and send success response
+    const accessTokenKey = crypto.randomBytes(64).toString('hex');
+    const refreshTokenKey = crypto.randomBytes(64).toString('hex');
+    await KeystoreRepo.create(user.id, accessTokenKey, refreshTokenKey);
+    const tokens = await createTokens(user, accessTokenKey, refreshTokenKey, false);
+    const userData = await getUserData(user);
+
+    return new SuccessResponse('Email verified successfully! You can now log in.', {
+      verified: true,
+      email: user.email,
+      tokens: {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       },
-    ).send(res);
+      user: userData,
+    }).send(res);
   }),
 );
 
