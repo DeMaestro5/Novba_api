@@ -20,13 +20,33 @@ const app = express();
 
 app.set('trust proxy', 1);
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+app.get('/health', (_req, res) =>
+  res.json({ status: 'ok', timestamp: new Date().toISOString() }),
+);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(
   express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 }),
 );
-app.use(cors({ origin: corsUrl, optionsSuccessStatus: 200 }));
+const allowedOrigins = [
+  corsUrl,
+  'http://localhost:3000',
+  'https://www.usenovba.com',
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked: ${origin}`));
+      }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200,
+  }),
+);
 
 // Routes
 app.use('/', routes);
