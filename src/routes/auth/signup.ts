@@ -36,8 +36,10 @@ router.post(
 
     const fullName: string = (req.body.name ?? '').trim();
     const spaceIndex = fullName.indexOf(' ');
-    const firstName = spaceIndex > -1 ? fullName.slice(0, spaceIndex) : fullName;
-    const lastName = spaceIndex > -1 ? fullName.slice(spaceIndex + 1).trim() || null : null;
+    const firstName =
+      spaceIndex > -1 ? fullName.slice(0, spaceIndex) : fullName;
+    const lastName =
+      spaceIndex > -1 ? fullName.slice(spaceIndex + 1).trim() || null : null;
 
     const rawName = req.body.name ?? req.body.email.split('@')[0];
     const autoSlug =
@@ -62,6 +64,19 @@ router.post(
       } as any,
       RoleCode.USER,
     );
+
+    // Grant lifetime Pro access to first 100 founding members
+    const foundingCount = await UserRepo.countFoundingMembers();
+    const isFoundingMember = foundingCount < 100;
+
+    if (isFoundingMember) {
+      await UserRepo.updateInfo(createdUser.id, {
+        subscriptionTier: 'PRO',
+        subscriptionStatus: 'ACTIVE',
+        lifetimeAccess: true,
+        lifetimeAccessGrantedAt: new Date(),
+      });
+    }
 
     // Save verification token
     await UserRepo.setEmailVerificationToken(
@@ -89,6 +104,7 @@ router.post(
       {
         email: createdUser.email,
         verified: false,
+        isFoundingMember,
       },
     ).send(res);
   }),
@@ -107,8 +123,14 @@ router.post(
 
     const fullNameAdmin: string = (req.body.name ?? '').trim();
     const spaceIndexAdmin = fullNameAdmin.indexOf(' ');
-    const firstNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(0, spaceIndexAdmin) : fullNameAdmin;
-    const lastNameAdmin = spaceIndexAdmin > -1 ? fullNameAdmin.slice(spaceIndexAdmin + 1).trim() || null : null;
+    const firstNameAdmin =
+      spaceIndexAdmin > -1
+        ? fullNameAdmin.slice(0, spaceIndexAdmin)
+        : fullNameAdmin;
+    const lastNameAdmin =
+      spaceIndexAdmin > -1
+        ? fullNameAdmin.slice(spaceIndexAdmin + 1).trim() || null
+        : null;
 
     const rawName = req.body.name ?? req.body.email.split('@')[0];
     const autoSlug =
