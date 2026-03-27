@@ -13,7 +13,7 @@ export const db = {
   maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '10'),
 };
 
-export const corsUrl = process.env.CORS_URL || 'http://localhost:3000';
+export const corsUrl = process.env.CORS_URL;
 
 export const tokenInfo = {
   accessTokenValidity: parseInt(process.env.ACCESS_TOKEN_VALIDITY_SEC || '0'),
