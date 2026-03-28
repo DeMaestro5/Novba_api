@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import ContractRepo from '../../database/repository/ContractRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProposalRepo from '../../database/repository/ProposalRepo';
@@ -43,29 +45,34 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const status = (req.query.status as ContractStatus) || undefined;
     const search = (req.query.search as string) || undefined;
 
+    const cacheKey = CacheKeys.contractList(userId, page, limit, status || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Contracts fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [contracts, total] = await Promise.all([
-      ContractRepo.findAllByUser(req.user.id, skip, limit, status, search),
-      ContractRepo.countByUser(req.user.id, status, search),
+      ContractRepo.findAllByUser(userId, skip, limit, status, search),
+      ContractRepo.countByUser(userId, status, search),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Contracts fetched successfully', {
+    const payload = {
       contracts: contracts.map(getContractData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Contracts fetched successfully', payload).send(res);
   }),
 );
 
@@ -123,6 +130,8 @@ router.post(
       startDate, // Now properly converted
       endDate, // Now properly converted
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
 
     new SuccessResponse('Contract created successfully', {
       contract: getContractData(contract),
@@ -198,6 +207,8 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+
     new SuccessResponse('Contract updated successfully', {
       contract: getContractData(contract),
     }).send(res);
@@ -217,6 +228,8 @@ router.delete(
     }
 
     await ContractRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
 
     new SuccessResponse('Contract deleted successfully', {}).send(res);
   }),
@@ -297,6 +310,8 @@ router.post(
       // continue — logging failure must never cause a 500
     }
 
+    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+
     new SuccessResponse('Contract sent successfully', {
       contract: getContractData(updatedContract),
     }).send(res);
@@ -366,6 +381,8 @@ router.post(
         error: emailError ?? undefined,
       });
     }
+
+    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
 
     new SuccessResponse('Contract signed successfully', {
       contract: getContractData(signedContract),

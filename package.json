@@ -29,6 +29,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "5.22.0",
+    "@upstash/redis": "^1.37.0",
     "axios": "^1.13.6",
     "bcrypt": "^5.1.1",
     "cloudinary": "^2.9.0",
@@ -47,7 +48,6 @@
     "nodemailer": "^7.0.12",
     "puppeteer": "^24.15.0",
     "qs": "^6.11.2",
-    "redis": "^4.6.12",
     "resend": "^6.7.0",
     "stripe": "^20.2.0",
     "winston": "^3.11.0",

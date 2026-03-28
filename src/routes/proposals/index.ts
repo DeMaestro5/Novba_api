@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import ProposalRepo from '../../database/repository/ProposalRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import {
@@ -42,29 +44,34 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const status = (req.query.status as ProposalStatus) || undefined;
     const search = (req.query.search as string) || undefined;
 
+    const cacheKey = CacheKeys.proposalList(userId, page, limit, status || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Proposals fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [proposals, total] = await Promise.all([
-      ProposalRepo.findAllByUser(req.user.id, skip, limit, status, search),
-      ProposalRepo.countByUser(req.user.id, status, search),
+      ProposalRepo.findAllByUser(userId, skip, limit, status, search),
+      ProposalRepo.countByUser(userId, status, search),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Proposals fetched successfully', {
+    const payload = {
       proposals: proposals.map(getProposalData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Proposals fetched successfully', payload).send(res);
   }),
 );
 
@@ -108,6 +115,8 @@ router.post(
       validUntil: req.body.validUntil,
       lineItems: req.body.lineItems,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
 
     new SuccessResponse('Proposal created successfully', {
       proposal: getProposalData(proposal),
@@ -213,6 +222,8 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
+
     new SuccessResponse('Proposal updated successfully', {
       proposal: getProposalData(proposal),
     }).send(res);
@@ -233,6 +244,8 @@ router.delete(
     }
 
     await ProposalRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
 
     new SuccessResponse('Proposal deleted successfully', {}).send(res);
   }),
@@ -308,6 +321,8 @@ router.post(
       error: emailError ?? undefined,
     });
 
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
+
     new SuccessResponse('Proposal sent successfully', {
       proposal: getProposalData(updatedProposal),
     }).send(res);
@@ -336,6 +351,8 @@ router.post(
       req.user.id,
       newProposalNumber,
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
 
     new SuccessResponse('Proposal duplicated successfully', {
       proposal: getProposalData(duplicatedProposal),
@@ -369,6 +386,8 @@ router.post(
       'service_agreement',
       template.content,
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userProposalsPattern(req.user.id));
 
     new SuccessResponse('Contract created successfully', {
       contract: getContractData(contract),
