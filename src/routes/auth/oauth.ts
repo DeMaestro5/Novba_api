@@ -33,8 +33,7 @@ async function handleOAuthCallback(
     let user = await UserRepo.findByEmail(profile.email);
 
     if (user) {
-      // Existing user — update profile pic if they don't have one
-      if (!user.profilePicUrl && profile.profilePicUrl) {
+      if (profile.profilePicUrl) {
         await UserRepo.updateInfo(user.id, {
           profilePicUrl: profile.profilePicUrl,
         });
@@ -86,11 +85,18 @@ async function handleOAuthCallback(
     const tokens = await createTokens(user, accessTokenKey, refreshTokenKey);
 
     // 3. Determine redirect destination (strict === true so false/null/undefined → /onboarding)
-    const destination = user.onboardingCompleted === true ? '/dashboard' : '/onboarding';
-    Logger.info(`OAuth destination for ${profile.email}: ${destination} (onboardingCompleted=${user.onboardingCompleted})`);
+    const destination =
+      user.onboardingCompleted === true ? '/dashboard' : '/onboarding';
+    Logger.info(
+      `OAuth destination for ${profile.email}: ${destination} (onboardingCompleted=${user.onboardingCompleted})`,
+    );
 
     // 4. Redirect to frontend with tokens in query params
-    const redirectUrl = `${process.env.OAUTH_REDIRECT_BASE_URL || 'http://localhost:3000'}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&destination=${encodeURIComponent(destination)}`;
+    const redirectUrl = `${
+      process.env.OAUTH_REDIRECT_BASE_URL || 'http://localhost:3000'
+    }/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${
+      tokens.refreshToken
+    }&destination=${encodeURIComponent(destination)}`;
 
     return res.redirect(redirectUrl);
   } catch (err) {
