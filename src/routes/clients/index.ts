@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import ClientRepo from '../../database/repository/ClientRepo';
 import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
@@ -25,28 +27,33 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = (req.query.search as string) || undefined;
 
+    const cacheKey = CacheKeys.clientList(userId, page, limit, search || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Clients fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [clients, total] = await Promise.all([
-      ClientRepo.findAllByUser(req.user.id, skip, limit, search),
-      ClientRepo.countByUser(req.user.id, search),
+      ClientRepo.findAllByUser(userId, skip, limit, search),
+      ClientRepo.countByUser(userId, search),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Clients fetched successfully', {
+    const payload = {
       clients: clients.map(getClientData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Clients fetched successfully', payload).send(res);
   }),
 );
 
@@ -70,6 +77,9 @@ router.post(
       currency: req.body.currency,
       notes: req.body.notes,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userClientsPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Client created successfully', {
       client: getClientData(client),
@@ -115,6 +125,8 @@ router.put(
       req.body,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userClientsPattern(req.user.id));
+
     new SuccessResponse('Client updated successfully', {
       client: getClientData(client),
     }).send(res);
@@ -146,6 +158,9 @@ router.delete(
     }
 
     await ClientRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userClientsPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Client deleted successfully', {}).send(res);
   }),

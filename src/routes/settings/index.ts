@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import SettingsRepo from '../../database/repository/SettingsRepo';
 import ReminderRepo from '../../database/repository/ReminderRepo';
 import { BadRequestError, NotFoundError } from '../../core/ApiError';
@@ -31,15 +33,24 @@ router.use(authentication);
 router.get(
   '/profile',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const settings = await SettingsRepo.getAllSettings(req.user.id);
+    const userId = req.user.id;
+
+    const cacheKey = CacheKeys.settingsProfile(userId);
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Settings fetched successfully', cached as object).send(res);
+    }
+
+    const settings = await SettingsRepo.getAllSettings(userId);
 
     if (!settings) {
       throw new NotFoundError('Settings not found');
     }
 
-    new SuccessResponse('Settings fetched successfully', {
-      settings: formatSettings(settings),
-    }).send(res);
+    const payload = { settings: formatSettings(settings) };
+    await CacheService.set(cacheKey, payload, TTL.SETTINGS);
+
+    new SuccessResponse('Settings fetched successfully', payload).send(res);
   }),
 );
 
@@ -94,6 +105,8 @@ router.put(
       });
     }
 
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
+
     new SuccessResponse('Profile settings updated successfully', {
       settings: updatedSettings,
     }).send(res);
@@ -112,6 +125,8 @@ router.put(
       req.user.id,
       req.body,
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
 
     new SuccessResponse('Business settings updated successfully', {
       settings: updatedSettings,
@@ -132,6 +147,8 @@ router.put(
       req.body,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
+
     new SuccessResponse('Invoice defaults updated successfully', {
       settings: updatedSettings,
     }).send(res);
@@ -151,6 +168,8 @@ router.post(
       req.body.logoUrl,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
+
     new SuccessResponse('Logo updated successfully', {
       businessLogo: updatedSettings.businessLogo,
     }).send(res);
@@ -165,6 +184,8 @@ router.delete(
   '/logo',
   asyncHandler(async (req: ProtectedRequest, res) => {
     await SettingsRepo.deleteLogo(req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
 
     new SuccessResponse('Logo deleted successfully', {
       businessLogo: null,
@@ -247,6 +268,8 @@ router.post(
         : undefined,
     });
 
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
+
     new SuccessResponse('Stripe Connect setup completed', {
       onboardingComplete: accountStatus.detailsSubmitted,
       chargesEnabled: accountStatus.chargesEnabled,
@@ -278,6 +301,8 @@ router.post(
 
     // Remove Stripe settings from database
     await SettingsRepo.disconnectStripe(req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
 
     new SuccessResponse('Stripe account disconnected successfully', {
       disconnected: true,
@@ -324,6 +349,8 @@ router.put(
       afterDueDays: req.body.afterDueDays,
       userConfigured: true,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userSettingsPattern(req.user.id));
 
     new SuccessResponse('Reminder settings updated', {
       reminders: {

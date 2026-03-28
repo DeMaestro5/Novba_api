@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import PortfolioRepo from '../../database/repository/PortfolioRepo';
 import {
   BadRequestError,
@@ -31,6 +33,7 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const category = (req.query.category as string) || undefined;
@@ -39,15 +42,21 @@ router.get(
       : undefined;
     const includeDeleted = req.query.includeDeleted === 'true';
 
+    const cacheKey = CacheKeys.portfolioList(userId, page, limit);
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Portfolio items fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [portfolioItems, total] = await Promise.all([
-      PortfolioRepo.findAllByUser(req.user.id, skip, limit, {
+      PortfolioRepo.findAllByUser(userId, skip, limit, {
         category,
         isPublished,
         includeDeleted,
       }),
-      PortfolioRepo.countByUser(req.user.id, {
+      PortfolioRepo.countByUser(userId, {
         category,
         isPublished,
         includeDeleted,
@@ -56,15 +65,13 @@ router.get(
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Portfolio items fetched successfully', {
+    const payload = {
       portfolio: portfolioItems.map(formatPortfolioData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Portfolio items fetched successfully', payload).send(res);
   }),
 );
 /**
@@ -119,6 +126,8 @@ router.post(
       testimonial: req.body.testimonial,
       order: req.body.order,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userPortfolioPattern(req.user.id));
 
     new SuccessResponse('Portfolio item created successfully', {
       portfolio: formatPortfolioData(portfolio),
@@ -182,6 +191,8 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userPortfolioPattern(req.user.id));
+
     new SuccessResponse('Portfolio item updated successfully', {
       portfolio: formatPortfolioData(portfolio),
     }).send(res);
@@ -201,6 +212,8 @@ router.delete(
     }
 
     const portfolio = await PortfolioRepo.softDelete(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userPortfolioPattern(req.user.id));
 
     new SuccessResponse('Portfolio item deleted successfully', {
       portfolio: formatPortfolioData(portfolio),
@@ -227,6 +240,8 @@ router.post(
       req.user.id,
       req.body.isPublished,
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userPortfolioPattern(req.user.id));
 
     new SuccessResponse(
       `Portfolio item ${req.body.isPublished ? 'published' : 'unpublished'} successfully`,

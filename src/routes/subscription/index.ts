@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import SubscriptionRepo from '../../database/repository/SubscriptionRepo';
 import { BadRequestError, NotFoundError } from '../../core/ApiError';
 import validator from '../../helpers/validator';
@@ -194,6 +196,8 @@ router.post(
     // Update in database
     await SubscriptionRepo.cancelAtPeriodEnd(subscription.stripeSubscriptionId);
 
+    await CacheService.invalidatePattern(CacheKeys.userSubscriptionPattern(req.user.id));
+
     new SuccessResponse('Subscription cancelled successfully', {
       message: `Your subscription will remain active until ${subscription.currentPeriodEnd}`,
       cancelAt: subscription.currentPeriodEnd,
@@ -224,6 +228,8 @@ router.post(
     // Update in database
     await SubscriptionRepo.resumeSubscription(subscription.stripeSubscriptionId);
 
+    await CacheService.invalidatePattern(CacheKeys.userSubscriptionPattern(req.user.id));
+
     new SuccessResponse('Subscription resumed successfully', {
       message: 'Your subscription will continue beyond the current period',
       subscription: formatSubscription(subscription),
@@ -238,8 +244,16 @@ router.post(
 router.get(
   '/usage',
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
+
+    const cacheKey = CacheKeys.subscriptionUsage(userId);
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Usage statistics fetched successfully', cached as object).send(res);
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
+      where: { id: userId },
       select: {
         subscriptionTier: true,
       },
@@ -249,7 +263,7 @@ router.get(
       throw new NotFoundError('User not found');
     }
 
-    const usage = await SubscriptionRepo.getUsageStats(req.user.id);
+    const usage = await SubscriptionRepo.getUsageStats(userId);
     const tierConfig = SUBSCRIPTION_TIERS[user.subscriptionTier as keyof typeof SUBSCRIPTION_TIERS];
 
     // Calculate usage percentages
@@ -302,11 +316,14 @@ router.get(
       },
     };
 
-    new SuccessResponse('Usage statistics fetched successfully', {
+    const payload = {
       tier: user.subscriptionTier,
       usage: usageWithLimits,
       tierLimits: tierConfig.limits,
-    }).send(res);
+    };
+    await CacheService.set(cacheKey, payload, TTL.SUBSCRIPTION);
+
+    new SuccessResponse('Usage statistics fetched successfully', payload).send(res);
   }),
 );
 

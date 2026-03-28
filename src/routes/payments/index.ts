@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import PaymentRepo from '../../database/repository/PaymentRepo';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import {
@@ -33,29 +35,34 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const status = (req.query.status as PaymentStatus) || undefined;
     const invoiceId = (req.query.invoiceId as string) || undefined;
 
+    const cacheKey = CacheKeys.paymentList(userId, page, limit);
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Payments fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [payments, total] = await Promise.all([
-      PaymentRepo.findAllByUser(req.user.id, skip, limit, status, invoiceId),
-      PaymentRepo.countByUser(req.user.id, status, invoiceId),
+      PaymentRepo.findAllByUser(userId, skip, limit, status, invoiceId),
+      PaymentRepo.countByUser(userId, status, invoiceId),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Payments fetched successfully', {
+    const payload = {
       payments: payments.map(getPaymentData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Payments fetched successfully', payload).send(res);
   }),
 );
 
@@ -123,6 +130,10 @@ router.post(
         paidAt: newInvoiceStatus === InvoiceStatus.PAID ? new Date() : undefined,
       },
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userPaymentsPattern(req.user.id));
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Payment recorded successfully', {
       payment: getPaymentData(payment),

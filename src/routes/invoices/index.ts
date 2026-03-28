@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProjectRepo from '../../database/repository/ProjectRepo';
@@ -70,29 +72,34 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const status = (req.query.status as InvoiceStatus) || undefined;
     const search = (req.query.search as string) || undefined;
 
+    const cacheKey = CacheKeys.invoiceList(userId, page, limit, status || '', search || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Invoices fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [invoices, total] = await Promise.all([
-      InvoiceRepo.findAllByUser(req.user.id, skip, limit, status, search),
-      InvoiceRepo.countByUser(req.user.id, status, search),
+      InvoiceRepo.findAllByUser(userId, skip, limit, status, search),
+      InvoiceRepo.countByUser(userId, status, search),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Invoices fetched successfully', {
+    const payload = {
       invoices: invoices.map(getInvoiceData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Invoices fetched successfully', payload).send(res);
   }),
 );
 
@@ -154,6 +161,9 @@ router.post(
       terms: req.body.terms,
       lineItems: req.body.lineItems,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoice created successfully', {
       invoice: getInvoiceData(invoice),
@@ -221,6 +231,9 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
     new SuccessResponse('Invoice updated successfully', {
       invoice: getInvoiceData(invoice),
     }).send(res);
@@ -240,6 +253,9 @@ router.delete(
     }
 
     await InvoiceRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoice deleted successfully', {}).send(res);
   }),
@@ -316,6 +332,9 @@ router.post(
       error: emailError ?? undefined,
     });
 
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
     new SuccessResponse('Invoice sent successfully', {
       invoice: getInvoiceData(updatedInvoice),
     }).send(res);
@@ -361,6 +380,8 @@ router.post(
       scheduledSendAt: sendAt,
     });
 
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+
     new SuccessResponse('Invoice scheduled successfully', {
       invoice: getInvoiceData(updated),
     }).send(res);
@@ -386,6 +407,8 @@ router.delete(
     const updated = await InvoiceRepo.update(req.params.id, req.user.id, {
       scheduledSendAt: null,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
 
     new SuccessResponse('Schedule cancelled successfully', {
       invoice: getInvoiceData(updated),
@@ -423,6 +446,8 @@ router.post(
       newDueDate,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+
     new SuccessResponse('Invoice duplicated successfully', {
       invoice: getInvoiceData(duplicatedInvoice),
     }).send(res);
@@ -456,6 +481,9 @@ router.patch(
       req.body.status,
       additionalData,
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoice status updated successfully', {
       invoice: getInvoiceData(updatedInvoice),
@@ -580,6 +608,9 @@ router.post(
         ...(emailError && { error: emailError }),
       });
     }
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoices sent successfully', {
       count: sentInvoices.length,

@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import ProjectRepo from '../../database/repository/ProjectRepo';
 import ClientRepo from '../../database/repository/ClientRepo';
 import ProposalRepo from '../../database/repository/ProposalRepo';
@@ -28,29 +30,34 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const status = (req.query.status as ProjectStatus) || undefined;
     const search = (req.query.search as string) || undefined;
 
+    const cacheKey = CacheKeys.projectList(userId, page, limit, status || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Projects fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [projects, total] = await Promise.all([
-      ProjectRepo.findAllByUser(req.user.id, skip, limit, status, search),
-      ProjectRepo.countByUser(req.user.id, status, search),
+      ProjectRepo.findAllByUser(userId, skip, limit, status, search),
+      ProjectRepo.countByUser(userId, status, search),
     ]);
 
     const totalPages = Math.ceil(total / limit);
 
-    new SuccessResponse('Projects fetched successfully', {
+    const payload = {
       projects: projects.map(getProjectData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
-    }).send(res);
+      pagination: { page, limit, total, totalPages },
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Projects fetched successfully', payload).send(res);
   }),
 );
 
@@ -128,6 +135,9 @@ router.post(
       paymentPlan: req.body.paymentPlan,
     });
 
+    await CacheService.invalidatePattern(CacheKeys.userProjectsPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
     new SuccessResponse('Project created successfully', {
       project: getProjectData(project),
     }).send(res);
@@ -202,6 +212,9 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userProjectsPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
     new SuccessResponse('Project updated successfully', {
       project: getProjectData(project),
     }).send(res);
@@ -232,6 +245,9 @@ router.delete(
     }
 
     await ProjectRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userProjectsPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Project deleted successfully', {}).send(res);
   }),
@@ -294,6 +310,8 @@ router.post(
         paymentPlan: req.body.paymentPlan,
       },
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userProjectsPattern(req.user.id));
 
     new SuccessResponse('Payment plan updated successfully', {
       project: getProjectData(updatedProject),

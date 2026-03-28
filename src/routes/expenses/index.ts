@@ -1,5 +1,7 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys, TTL } from '../../cache/keys';
 import ExpenseRepo from '../../database/repository/ExpenseRepo';
 import {
   BadRequestError,
@@ -104,6 +106,7 @@ router.get(
   '/',
   validator(schema.pagination),
   asyncHandler(async (req: ProtectedRequest, res) => {
+    const userId = req.user.id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const category = (req.query.category as ExpenseCategory) || undefined;
@@ -121,11 +124,17 @@ router.get(
         ? false
         : undefined;
 
+    const cacheKey = CacheKeys.expenseList(userId, page, limit, category || '');
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Expenses fetched successfully', cached as object).send(res);
+    }
+
     const skip = (page - 1) * limit;
 
     const [expenses, total] = await Promise.all([
       ExpenseRepo.findAllByUser(
-        req.user.id,
+        userId,
         skip,
         limit,
         category,
@@ -135,7 +144,7 @@ router.get(
         taxDeductible,
       ),
       ExpenseRepo.countByUser(
-        req.user.id,
+        userId,
         category,
         search,
         startDate,
@@ -148,7 +157,7 @@ router.get(
 
     // Get totals for current filter
     const allExpensesForFilter = await ExpenseRepo.findAllForExport(
-      req.user.id,
+      userId,
       category,
       startDate,
       endDate,
@@ -156,16 +165,14 @@ router.get(
     );
     const totals = calculateTotals(allExpensesForFilter);
 
-    new SuccessResponse('Expenses fetched successfully', {
+    const payload = {
       expenses: expenses.map(getExpenseData),
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-      },
+      pagination: { page, limit, total, totalPages },
       totals,
-    }).send(res);
+    };
+    await CacheService.set(cacheKey, payload, TTL.LIST);
+
+    new SuccessResponse('Expenses fetched successfully', payload).send(res);
   }),
 );
 
@@ -191,6 +198,9 @@ router.post(
       taxDeductible: req.body.taxDeductible,
       receiptUrl: req.body.receiptUrl,
     });
+
+    await CacheService.invalidatePattern(CacheKeys.userExpensesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Expense created successfully', {
       expense: getExpenseData(expense),
@@ -242,6 +252,9 @@ router.put(
       updateData,
     );
 
+    await CacheService.invalidatePattern(CacheKeys.userExpensesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
     new SuccessResponse('Expense updated successfully', {
       expense: getExpenseData(expense),
     }).send(res);
@@ -261,6 +274,9 @@ router.delete(
     }
 
     await ExpenseRepo.remove(req.params.id, req.user.id);
+
+    await CacheService.invalidatePattern(CacheKeys.userExpensesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Expense deleted successfully', {}).send(res);
   }),
@@ -287,6 +303,8 @@ router.post(
         receiptUrl: req.body.receiptUrl,
       },
     );
+
+    await CacheService.invalidatePattern(CacheKeys.userExpensesPattern(req.user.id));
 
     new SuccessResponse('Receipt uploaded successfully', {
       expense: getExpenseData(updatedExpense),
