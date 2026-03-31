@@ -233,7 +233,7 @@ router.get(
     console.log('ConnectUrl', connectUrl);
 
     new SuccessResponse('Stripe Connect URL generated successfully', {
-      connectUrl,
+      url: connectUrl,
       accountId,
     }).send(res);
   }),

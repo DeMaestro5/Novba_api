@@ -27,8 +27,8 @@ export async function createStripeConnectLink(
 
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
-    refresh_url: `${process.env.FRONTEND_URL}/settings/stripe/refresh`,
-    return_url: `${process.env.FRONTEND_URL}/settings/stripe/complete`,
+    return_url: `${process.env.FRONTEND_URL}/settings?stripe=complete`,
+    refresh_url: `${process.env.FRONTEND_URL}/settings?stripe=refresh`,
     type: 'account_onboarding',
   });
 
