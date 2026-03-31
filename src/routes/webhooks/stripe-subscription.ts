@@ -16,7 +16,9 @@ router.post(
   express.raw({ type: 'application/json' }),
   async (req, res) => {
     const sig = req.headers['stripe-signature'] as string;
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret =
+      process.env.STRIPE_SUBSCRIPTION_WEBHOOK_SECRET ||
+      process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!webhookSecret) {
       console.error('Stripe webhook secret not configured');
@@ -38,19 +40,27 @@ router.post(
     try {
       switch (event.type) {
         case 'checkout.session.completed':
-          await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+          await handleCheckoutSessionCompleted(
+            event.data.object as Stripe.Checkout.Session,
+          );
           break;
 
         case 'customer.subscription.created':
-          await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+          await handleSubscriptionCreated(
+            event.data.object as Stripe.Subscription,
+          );
           break;
 
         case 'customer.subscription.updated':
-          await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+          await handleSubscriptionUpdated(
+            event.data.object as Stripe.Subscription,
+          );
           break;
 
         case 'customer.subscription.deleted':
-          await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+          await handleSubscriptionDeleted(
+            event.data.object as Stripe.Subscription,
+          );
           break;
 
         case 'invoice.paid':
@@ -80,7 +90,9 @@ router.post(
 /**
  * Handle checkout.session.completed
  */
-async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session,
+) {
   console.log('Processing checkout.session.completed:', session.id);
 
   const userId = session.metadata?.userId || session.client_reference_id;
@@ -118,7 +130,7 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
   }
 
   const status = mapStripeStatus(sub.status);
-  
+
   // ✅ FIX: Cast to any to access Stripe properties
   const subAny = sub as any;
   const currentPeriodStart = new Date(subAny.current_period_start * 1000);
@@ -133,16 +145,9 @@ async function handleSubscriptionCreated(sub: Stripe.Subscription) {
     currentPeriodEnd,
   });
 
-  const trialEnd = subAny.trial_end
-    ? new Date(subAny.trial_end * 1000)
-    : null;
+  const trialEnd = subAny.trial_end ? new Date(subAny.trial_end * 1000) : null;
 
-  await SubscriptionRepo.updateUserSubscription(
-    userId,
-    tier,
-    status,
-    trialEnd,
-  );
+  await SubscriptionRepo.updateUserSubscription(userId, tier, status, trialEnd);
 
   console.log(`Subscription created for user ${userId}: ${tier} - ${status}`);
 }
@@ -161,7 +166,7 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
   }
 
   const status = mapStripeStatus(sub.status);
-  
+
   // ✅ FIX: Cast to any to access Stripe properties
   const subAny = sub as any;
   const currentPeriodStart = new Date(subAny.current_period_start * 1000);
@@ -174,9 +179,7 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
     cancelAtPeriodEnd: subAny.cancel_at_period_end || false,
   });
 
-  const trialEnd = subAny.trial_end
-    ? new Date(subAny.trial_end * 1000)
-    : null;
+  const trialEnd = subAny.trial_end ? new Date(subAny.trial_end * 1000) : null;
 
   await SubscriptionRepo.updateUserSubscription(
     existingSubscription.userId,
@@ -223,9 +226,10 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
 
   // ✅ FIX: Cast to any to access Stripe properties
   const invoiceAny = invoice as any;
-  const subscriptionId = typeof invoiceAny.subscription === 'string' 
-    ? invoiceAny.subscription 
-    : invoiceAny.subscription?.id;
+  const subscriptionId =
+    typeof invoiceAny.subscription === 'string'
+      ? invoiceAny.subscription
+      : invoiceAny.subscription?.id;
 
   if (!subscriptionId) {
     console.log('Invoice is not related to a subscription');
@@ -261,9 +265,10 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
 
   // ✅ FIX: Cast to any to access Stripe properties
   const invoiceAny = invoice as any;
-  const subscriptionId = typeof invoiceAny.subscription === 'string' 
-    ? invoiceAny.subscription 
-    : invoiceAny.subscription?.id;
+  const subscriptionId =
+    typeof invoiceAny.subscription === 'string'
+      ? invoiceAny.subscription
+      : invoiceAny.subscription?.id;
 
   if (!subscriptionId) {
     console.log('Invoice is not related to a subscription');
