@@ -262,10 +262,15 @@ async function findByIdPublic(id: string): Promise<any | null> {
     include: {
       client: {
         select: {
-          id: true,
           companyName: true,
           contactName: true,
           email: true,
+        },
+      },
+      user: {
+        select: {
+          name: true,
+          businessName: true,
         },
       },
     },

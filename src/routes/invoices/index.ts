@@ -27,11 +27,40 @@ import paymentLink from './payment-link';
 import { generatePdf } from '../../services/pdf';
 import { sendEmail } from '../../services/Email.service';
 import { logEmail } from '../../services/emailLog';
+import SettingsRepo from '../../database/repository/SettingsRepo';
 
 const router = express.Router();
 
+/**
+ * GET /api/v1/invoices/:id/public
+ * Public endpoint — no auth required — used by the client-facing pay page
+ */
+router.get(
+  '/:id/public',
+  asyncHandler(async (req, res) => {
+    const invoice = await InvoiceRepo.findByIdPublic(req.params.id);
+    if (!invoice) throw new NotFoundError('Invoice not found');
+
+    new SuccessResponse('Invoice fetched successfully', {
+      invoice: {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+        total: invoice.total,
+        currency: invoice.currency,
+        dueDate: invoice.dueDate,
+        issueDate: invoice.issueDate,
+        businessName: invoice.user?.businessName || invoice.user?.name || null,
+        client: {
+          companyName: invoice.client?.companyName,
+        },
+      },
+    }).send(res);
+  }),
+);
+
 /*---------------------------------------------------------*/
-// All routes require authentication
+// All routes below require authentication
 router.use(authentication);
 /*---------------------------------------------------------*/
 
@@ -301,7 +330,82 @@ router.post(
         const subject = `Invoice ${invoice.invoiceNumber} from ${
           req.user.name || 'Us'
         }`;
-        const html = `<p>Please find your invoice attached.</p>`;
+
+        // Generate payment link to include in email
+        let paymentLinkUrl: string | null = null;
+        try {
+          const { createStripePaymentIntent, generatePaymentLink } = await import('../payments/utils');
+          const stripeSettings = await SettingsRepo.getStripeSettings(req.user.id);
+          if (stripeSettings?.stripeAccountId && stripeSettings.stripeChargesEnabled) {
+            const paymentIntent = await createStripePaymentIntent(
+              Number(invoice.total),
+              invoice.currency,
+              invoice.id,
+              invoice.client.email,
+            );
+            paymentLinkUrl = generatePaymentLink(invoice.id, paymentIntent.client_secret!);
+          }
+        } catch {
+          // Payment link is optional — email still sends without it
+        }
+
+        const senderName = req.user.businessName || req.user.name || 'Your service provider';
+        const formattedTotal = new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: invoice.currency,
+        }).format(Number(invoice.total));
+        const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
+          month: 'long', day: 'numeric', year: 'numeric',
+        });
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
+  <div style="background:#fff;padding:40px;border-radius:12px;border:1px solid #e5e7eb;">
+    <div style="margin-bottom:28px;">
+      <span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span>
+    </div>
+    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${invoice.invoiceNumber}</h1>
+    <p style="color:#6b7280;margin:0 0 28px 0;font-size:15px;">From ${senderName}</p>
+    <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">
+      Hi ${invoice.client.contactName || invoice.client.companyName},
+    </p>
+    <p style="color:#374151;margin:0 0 24px 0;font-size:15px;">
+      Please find your invoice attached. Here's a summary:
+    </p>
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:28px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <span style="color:#6b7280;font-size:13px;">Invoice</span>
+        <span style="color:#111827;font-weight:700;font-size:13px;">${invoice.invoiceNumber}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <span style="color:#6b7280;font-size:13px;">Amount due</span>
+        <span style="color:#ea580c;font-weight:700;font-size:15px;">${formattedTotal}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:#6b7280;font-size:13px;">Due date</span>
+        <span style="color:#111827;font-weight:700;font-size:13px;">${formattedDueDate}</span>
+      </div>
+    </div>
+    ${paymentLinkUrl ? `
+    <div style="text-align:center;margin:0 0 28px 0;">
+      <a href="${paymentLinkUrl}"
+         style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:15px;">
+        Pay Now →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;margin:10px 0 0 0;">Secure payment powered by Stripe</p>
+    </div>
+    ` : ''}
+    <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">
+      The full invoice is attached as a PDF. If you have any questions, reply to this email.
+    </p>
+  </div>
+</body>
+</html>
+`;
+
         emailSent = await sendEmail({
           to: clientEmail,
           subject,
