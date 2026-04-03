@@ -1,6 +1,10 @@
 import express from 'express';
 import apikey from '../auth/apikey';
+import asyncHandler from '../helpers/asyncHandler';
 import permission from '../helpers/permission';
+import InvoiceRepo from '../database/repository/InvoicesRepo';
+import { NotFoundError } from '../core/ApiError';
+import { SuccessResponse } from '../core/ApiResponse';
 import { Permission } from '../database/types';
 import signup from './auth/signup';
 import login from './auth/login';
@@ -44,6 +48,26 @@ router.use('/p', publicPortfolioLink);
 
 // Public endpoints — no auth required
 router.use('/public', publicRouter);
+
+// Public invoice endpoint — no API key required, used by /pay page
+router.get('/invoices/:id/public', asyncHandler(async (req, res) => {
+  const invoice = await InvoiceRepo.findByIdPublic(req.params.id);
+  if (!invoice) throw new NotFoundError('Invoice not found');
+
+  new SuccessResponse('Invoice fetched successfully', {
+    invoice: {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      total: invoice.total,
+      currency: invoice.currency,
+      dueDate: invoice.dueDate,
+      issueDate: invoice.issueDate,
+      businessName: invoice.user?.businessName || invoice.user?.name || null,
+      client: { companyName: invoice.client?.companyName },
+    },
+  }).send(res);
+}));
 
 /*---------------------------------------------------------*/
 router.use(apikey);

@@ -31,34 +31,6 @@ import SettingsRepo from '../../database/repository/SettingsRepo';
 
 const router = express.Router();
 
-/**
- * GET /api/v1/invoices/:id/public
- * Public endpoint — no auth required — used by the client-facing pay page
- */
-router.get(
-  '/:id/public',
-  asyncHandler(async (req, res) => {
-    const invoice = await InvoiceRepo.findByIdPublic(req.params.id);
-    if (!invoice) throw new NotFoundError('Invoice not found');
-
-    new SuccessResponse('Invoice fetched successfully', {
-      invoice: {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        status: invoice.status,
-        total: invoice.total,
-        currency: invoice.currency,
-        dueDate: invoice.dueDate,
-        issueDate: invoice.issueDate,
-        businessName: invoice.user?.businessName || invoice.user?.name || null,
-        client: {
-          companyName: invoice.client?.companyName,
-        },
-      },
-    }).send(res);
-  }),
-);
-
 /*---------------------------------------------------------*/
 // All routes below require authentication
 router.use(authentication);
