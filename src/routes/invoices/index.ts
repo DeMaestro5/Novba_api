@@ -320,45 +320,49 @@ router.post(
     const clientEmail = invoice.client!.email!;
     let emailSent = false;
     let emailError: string | undefined;
+
+    const senderName = (req.user as any).businessName || req.user.name || 'Your service provider';
+    const formattedTotal = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: invoice.currency,
+    }).format(Number(invoice.total));
+    const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    });
+
+    // Generate PDF — optional, email sends without it
+    let pdfBuffer: Buffer | null = null;
     try {
       const htmlContent = generateInvoiceHTML({ ...invoice, status: updatedInvoice.status }, req.user);
-      const pdfBuffer = await generatePdf({
+      pdfBuffer = await generatePdf({
         html: htmlContent,
         filename: `invoice-${invoice.invoiceNumber}.pdf`,
       });
-      if (pdfBuffer) {
-        const subject = `Invoice ${invoice.invoiceNumber} from ${
-          req.user.name || 'Us'
-        }`;
+    } catch {
+      // PDF failure does not block email
+    }
 
-        // Generate payment link to include in email
-        let paymentLinkUrl: string | null = null;
-        try {
-          const { createStripePaymentIntent, generatePaymentLink } = await import('../payments/utils');
-          const stripeSettings = await SettingsRepo.getStripeSettings(req.user.id);
-          if (stripeSettings?.stripeAccountId && stripeSettings.stripeChargesEnabled) {
-            const paymentIntent = await createStripePaymentIntent(
-              Number(invoice.total),
-              invoice.currency,
-              invoice.id,
-              invoice.client.email,
-            );
-            paymentLinkUrl = generatePaymentLink(invoice.id, paymentIntent.client_secret!);
-          }
-        } catch {
-          // Payment link is optional — email still sends without it
-        }
+    // Generate payment link — optional, email sends without it
+    let paymentLinkUrl: string | null = null;
+    try {
+      const { createStripePaymentIntent, generatePaymentLink } = await import('../payments/utils');
+      const stripeSettings = await SettingsRepo.getStripeSettings(req.user.id);
+      if (stripeSettings?.stripeAccountId && stripeSettings.stripeChargesEnabled) {
+        const paymentIntent = await createStripePaymentIntent(
+          Number(invoice.total),
+          invoice.currency,
+          invoice.id,
+          invoice.client.email,
+        );
+        paymentLinkUrl = generatePaymentLink(invoice.id, paymentIntent.client_secret!);
+      }
+    } catch {
+      // Payment link failure does not block email
+    }
 
-        const senderName = req.user.businessName || req.user.name || 'Your service provider';
-        const formattedTotal = new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: invoice.currency,
-        }).format(Number(invoice.total));
-        const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
-          month: 'long', day: 'numeric', year: 'numeric',
-        });
+    const subject = `Invoice ${invoice.invoiceNumber} from ${senderName}`;
 
-        const html = `
+    const html = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -369,12 +373,8 @@ router.post(
     </div>
     <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${invoice.invoiceNumber}</h1>
     <p style="color:#6b7280;margin:0 0 28px 0;font-size:15px;">From ${senderName}</p>
-    <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">
-      Hi ${invoice.client.contactName || invoice.client.companyName},
-    </p>
-    <p style="color:#374151;margin:0 0 24px 0;font-size:15px;">
-      Please find your invoice attached. Here's a summary:
-    </p>
+    <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">Hi ${invoice.client.contactName || invoice.client.companyName},</p>
+    <p style="color:#374151;margin:0 0 24px 0;font-size:15px;">Please find your invoice${pdfBuffer ? ' attached' : ' below'}. Here's a summary:</p>
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:28px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
         <span style="color:#6b7280;font-size:13px;">Invoice</span>
@@ -391,36 +391,33 @@ router.post(
     </div>
     ${paymentLinkUrl ? `
     <div style="text-align:center;margin:0 0 28px 0;">
-      <a href="${paymentLinkUrl}"
-         style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:15px;">
+      <a href="${paymentLinkUrl}" style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:15px;">
         Pay Now →
       </a>
       <p style="color:#9ca3af;font-size:12px;margin:10px 0 0 0;">Secure payment powered by Stripe</p>
     </div>
     ` : ''}
     <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">
-      The full invoice is attached as a PDF. If you have any questions, reply to this email.
+      ${pdfBuffer ? 'The full invoice is attached as a PDF. ' : ''}If you have any questions, reply to this email.
     </p>
   </div>
 </body>
 </html>
 `;
 
-        emailSent = await sendEmail({
-          to: clientEmail,
-          subject,
-          html,
-          attachments: [
-            {
-              filename: `invoice-${invoice.invoiceNumber}.pdf`,
-              content: pdfBuffer,
-            },
-          ],
-        });
-        if (!emailSent) emailError = 'Email provider did not confirm send';
-      } else {
-        emailError = 'PDF generation failed';
-      }
+    try {
+      emailSent = await sendEmail({
+        to: clientEmail,
+        subject,
+        html,
+        ...(pdfBuffer ? {
+          attachments: [{
+            filename: `invoice-${invoice.invoiceNumber}.pdf`,
+            content: pdfBuffer,
+          }],
+        } : {}),
+      });
+      if (!emailSent) emailError = 'Email provider did not confirm send';
     } catch (err) {
       emailError = err instanceof Error ? err.message : 'Send failed';
     }
