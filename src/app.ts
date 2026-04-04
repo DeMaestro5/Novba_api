@@ -23,10 +23,21 @@ app.get('/health', (_req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() }),
 );
 
-app.use(express.json({ limit: '10mb' }));
+// Stripe webhooks MUST receive raw body — mount before express.json()
 app.use(
-  express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 }),
+  '/webhooks',
+  express.raw({ type: 'application/json' }),
 );
+
+// All other routes get parsed JSON
+app.use((req, _res, next) => {
+  if (req.path.startsWith('/webhooks')) return next();
+  express.json({ limit: '10mb' })(req, _res, next);
+});
+app.use((req, _res, next) => {
+  if (req.path.startsWith('/webhooks')) return next();
+  express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 })(req, _res, next);
+});
 const allowedOrigins = [
   corsUrl,
   'http://localhost:3000',
