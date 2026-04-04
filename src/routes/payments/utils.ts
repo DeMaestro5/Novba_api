@@ -59,6 +59,7 @@ export async function createStripePaymentIntent(
   currency: string,
   invoiceId: string,
   customerEmail?: string,
+  userId?: string,
 ): Promise<Stripe.PaymentIntent> {
   const stripe = getStripeClient();
   
@@ -71,6 +72,7 @@ export async function createStripePaymentIntent(
     currency: currency.toLowerCase(),
     metadata: {
       invoiceId,
+      ...(userId && { userId }),
     },
     receipt_email: customerEmail,
   });
