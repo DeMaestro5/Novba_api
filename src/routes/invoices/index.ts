@@ -325,6 +325,7 @@ router.post(
           invoice.currency,
           invoice.id,
           invoice.client.email,
+          req.user.id,
         );
         paymentLinkUrl = generatePaymentLink(invoice.id, paymentIntent.client_secret!);
       }
