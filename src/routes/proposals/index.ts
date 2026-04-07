@@ -291,7 +291,19 @@ router.post(
     });
     if (pdfBuffer) {
       const subject = `Proposal: ${proposal.title} – ${proposal.proposalNumber}`;
-        const html = `<p>Please find the attached proposal.</p>`;
+        const senderName = (req.user as any).businessName || req.user.name || 'Your service provider';
+        const html = `
+<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
+  <div style="background:#fff;padding:40px;border-radius:12px;border:1px solid #e5e7eb;">
+    <div style="margin-bottom:28px;"><span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span></div>
+    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Proposal: ${proposal.title}</h1>
+    <p style="color:#6b7280;margin:0 0 24px 0;">From ${senderName}</p>
+    <p style="color:#374151;margin:0 0 16px 0;">Hi ${proposal.client?.contactName || proposal.client?.companyName},</p>
+    <p style="color:#374151;margin:0 0 24px 0;">Please find the attached proposal <strong>${proposal.proposalNumber}</strong> for your review.</p>
+    <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">If you have any questions, reply to this email.</p>
+  </div>
+</body></html>`;
         emailSent = await sendEmail({
           to: clientEmail,
           subject,

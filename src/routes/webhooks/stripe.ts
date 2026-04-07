@@ -2,6 +2,8 @@ import express from 'express';
 import Stripe from 'stripe';
 import PaymentRepo from '../../database/repository/PaymentRepo';
 import InvoiceRepo from '../../database/repository/InvoicesRepo';
+import { CacheService } from '../../cache/CacheService';
+import { CacheKeys } from '../../cache/keys';
 
 const router = express.Router();
 
@@ -87,6 +89,13 @@ async function handlePaymentIntentSucceeded(
 
   // Update invoice status
   await InvoiceRepo.updateStatusAfterPayment(invoiceId);
+
+  // Invalidate server-side cache so next fetch returns PAID status
+  await Promise.all([
+    CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(userId)),
+    CacheService.invalidatePattern(CacheKeys.userPaymentsPattern(userId)),
+    CacheService.invalidateUserDashboard(userId),
+  ]);
 
   console.log(`Payment recorded for invoice ${invoiceId}`);
 }
