@@ -24,10 +24,7 @@ app.get('/health', (_req, res) =>
 );
 
 // Stripe webhooks MUST receive raw body — mount before express.json()
-app.use(
-  '/webhooks',
-  express.raw({ type: 'application/json' }),
-);
+app.use('/webhooks', express.raw({ type: 'application/json' }));
 
 // All other routes get parsed JSON
 app.use((req, _res, next) => {
@@ -36,7 +33,11 @@ app.use((req, _res, next) => {
 });
 app.use((req, _res, next) => {
   if (req.path.startsWith('/webhooks')) return next();
-  express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 })(req, _res, next);
+  express.urlencoded({ limit: '10mb', extended: true, parameterLimit: 50000 })(
+    req,
+    _res,
+    next,
+  );
 });
 const allowedOrigins = [
   corsUrl,
@@ -55,6 +56,7 @@ app.use(
     },
     credentials: true,
     optionsSuccessStatus: 200,
+    maxAge: 86400,
   }),
 );
 
