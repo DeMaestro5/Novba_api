@@ -79,10 +79,19 @@ router.get(
     const status = (req.query.status as InvoiceStatus) || undefined;
     const search = (req.query.search as string) || undefined;
 
-    const cacheKey = CacheKeys.invoiceList(userId, page, limit, status || '', search || '');
+    const cacheKey = CacheKeys.invoiceList(
+      userId,
+      page,
+      limit,
+      status || '',
+      search || '',
+    );
     const cached = await CacheService.get(cacheKey);
     if (cached) {
-      return new SuccessResponse('Invoices fetched successfully', cached as object).send(res);
+      return new SuccessResponse(
+        'Invoices fetched successfully',
+        cached as object,
+      ).send(res);
     }
 
     const skip = (page - 1) * limit;
@@ -163,7 +172,9 @@ router.post(
       lineItems: req.body.lineItems,
     });
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoice created successfully', {
@@ -179,15 +190,18 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
-
-    if (!invoice) {
-      throw new NotFoundError('Invoice not found');
+    const cacheKey = `invoice:${req.user.id}:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Invoice fetched', cached as object).send(res);
     }
 
-    new SuccessResponse('Invoice fetched successfully', {
-      invoice: getInvoiceData(invoice),
-    }).send(res);
+    const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
+    if (!invoice) throw new NotFoundError('Invoice not found');
+
+    const payload = { invoice: getInvoiceData(invoice) };
+    await CacheService.set(cacheKey, payload, 300); // 5 min TTL
+    new SuccessResponse('Invoice fetched', payload).send(res);
   }),
 );
 
@@ -232,8 +246,11 @@ router.put(
       updateData,
     );
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoice updated successfully', {
       invoice: getInvoiceData(invoice),
@@ -255,8 +272,11 @@ router.delete(
 
     await InvoiceRepo.remove(req.params.id, req.user.id);
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoice deleted successfully', {}).send(res);
   }),
@@ -293,19 +313,30 @@ router.post(
     let emailSent = false;
     let emailError: string | undefined;
 
-    const senderName = (req.user as any).businessName || req.user.name || 'Your service provider';
+    const senderName =
+      (req.user as any).businessName ||
+      req.user.name ||
+      'Your service provider';
     const formattedTotal = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: invoice.currency,
     }).format(Number(invoice.total));
-    const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric',
-    });
+    const formattedDueDate = new Date(invoice.dueDate).toLocaleDateString(
+      'en-US',
+      {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      },
+    );
 
     // Generate PDF — optional, email sends without it
     let pdfBuffer: Buffer | null = null;
     try {
-      const htmlContent = generateInvoiceHTML({ ...invoice, status: updatedInvoice.status }, req.user);
+      const htmlContent = generateInvoiceHTML(
+        { ...invoice, status: updatedInvoice.status },
+        req.user,
+      );
       pdfBuffer = await generatePdf({
         html: htmlContent,
         filename: `invoice-${invoice.invoiceNumber}.pdf`,
@@ -317,9 +348,14 @@ router.post(
     // Generate payment link — optional, email sends without it
     let paymentLinkUrl: string | null = null;
     try {
-      const { createStripePaymentIntent, generatePaymentLink } = await import('../payments/utils');
+      const { createStripePaymentIntent, generatePaymentLink } = await import(
+        '../payments/utils'
+      );
       const stripeSettings = await SettingsRepo.getStripeSettings(req.user.id);
-      if (stripeSettings?.stripeAccountId && stripeSettings.stripeChargesEnabled) {
+      if (
+        stripeSettings?.stripeAccountId &&
+        stripeSettings.stripeChargesEnabled
+      ) {
         const paymentIntent = await createStripePaymentIntent(
           Number(invoice.total),
           invoice.currency,
@@ -327,7 +363,10 @@ router.post(
           invoice.client.email,
           req.user.id,
         );
-        paymentLinkUrl = generatePaymentLink(invoice.id, paymentIntent.client_secret!);
+        paymentLinkUrl = generatePaymentLink(
+          invoice.id,
+          paymentIntent.client_secret!,
+        );
       }
     } catch {
       // Payment link failure does not block email
@@ -344,14 +383,22 @@ router.post(
     <div style="margin-bottom:28px;">
       <span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span>
     </div>
-    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${invoice.invoiceNumber}</h1>
+    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${
+      invoice.invoiceNumber
+    }</h1>
     <p style="color:#6b7280;margin:0 0 28px 0;font-size:15px;">From ${senderName}</p>
-    <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">Hi ${invoice.client.contactName || invoice.client.companyName},</p>
-    <p style="color:#374151;margin:0 0 24px 0;font-size:15px;">Please find your invoice${pdfBuffer ? ' attached' : ' below'}. Here's a summary:</p>
+    <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">Hi ${
+      invoice.client.contactName || invoice.client.companyName
+    },</p>
+    <p style="color:#374151;margin:0 0 24px 0;font-size:15px;">Please find your invoice${
+      pdfBuffer ? ' attached' : ' below'
+    }. Here's a summary:</p>
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:28px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
         <span style="color:#6b7280;font-size:13px;">Invoice</span>
-        <span style="color:#111827;font-weight:700;font-size:13px;">${invoice.invoiceNumber}</span>
+        <span style="color:#111827;font-weight:700;font-size:13px;">${
+          invoice.invoiceNumber
+        }</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
         <span style="color:#6b7280;font-size:13px;">Amount due</span>
@@ -362,16 +409,22 @@ router.post(
         <span style="color:#111827;font-weight:700;font-size:13px;">${formattedDueDate}</span>
       </div>
     </div>
-    ${paymentLinkUrl ? `
+    ${
+      paymentLinkUrl
+        ? `
     <div style="text-align:center;margin:0 0 28px 0;">
       <a href="${paymentLinkUrl}" style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:15px;">
         Pay Now →
       </a>
       <p style="color:#9ca3af;font-size:12px;margin:10px 0 0 0;">Secure payment powered by Stripe</p>
     </div>
-    ` : ''}
+    `
+        : ''
+    }
     <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">
-      ${pdfBuffer ? 'The full invoice is attached as a PDF. ' : ''}If you have any questions, reply to this email.
+      ${
+        pdfBuffer ? 'The full invoice is attached as a PDF. ' : ''
+      }If you have any questions, reply to this email.
     </p>
   </div>
 </body>
@@ -383,12 +436,16 @@ router.post(
         to: clientEmail,
         subject,
         html,
-        ...(pdfBuffer ? {
-          attachments: [{
-            filename: `invoice-${invoice.invoiceNumber}.pdf`,
-            content: pdfBuffer,
-          }],
-        } : {}),
+        ...(pdfBuffer
+          ? {
+              attachments: [
+                {
+                  filename: `invoice-${invoice.invoiceNumber}.pdf`,
+                  content: pdfBuffer,
+                },
+              ],
+            }
+          : {}),
       });
       if (!emailSent) emailError = 'Email provider did not confirm send';
     } catch (err) {
@@ -406,8 +463,11 @@ router.post(
       error: emailError ?? undefined,
     });
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoice sent successfully', {
       invoice: getInvoiceData(updatedInvoice),
@@ -454,8 +514,10 @@ router.post(
       scheduledSendAt: sendAt,
     });
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
-
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
     new SuccessResponse('Invoice scheduled successfully', {
       invoice: getInvoiceData(updated),
     }).send(res);
@@ -482,7 +544,10 @@ router.delete(
       scheduledSendAt: null,
     });
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Schedule cancelled successfully', {
       invoice: getInvoiceData(updated),
@@ -520,7 +585,10 @@ router.post(
       newDueDate,
     );
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoice duplicated successfully', {
       invoice: getInvoiceData(duplicatedInvoice),
@@ -556,8 +624,11 @@ router.patch(
       additionalData,
     );
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoice status updated successfully', {
       invoice: getInvoiceData(updatedInvoice),
@@ -683,8 +754,11 @@ router.post(
       });
     }
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`invoice:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Invoices sent successfully', {
       count: sentInvoices.length,
