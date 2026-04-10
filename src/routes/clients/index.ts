@@ -94,15 +94,16 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const client = await ClientRepo.findById(req.params.id, req.user.id);
-
-    if (!client) {
-      throw new NotFoundError('Client not found');
+    const cacheKey = `client:${req.user.id}:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Client fetched successfully', cached as object).send(res);
     }
-
-    new SuccessResponse('Client fetched successfully', {
-      client: getClientData(client),
-    }).send(res);
+    const client = await ClientRepo.findById(req.params.id, req.user.id);
+    if (!client) throw new NotFoundError('Client not found');
+    const payload = { client: getClientData(client) };
+    await CacheService.set(cacheKey, payload, 300);
+    new SuccessResponse('Client fetched successfully', payload).send(res);
   }),
 );
 
@@ -126,6 +127,10 @@ router.put(
     );
 
     await CacheService.invalidatePattern(CacheKeys.userClientsPattern(req.user.id));
+    await CacheService.del(`client:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-stats:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-health:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-invoices:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Client updated successfully', {
       client: getClientData(client),
@@ -161,6 +166,10 @@ router.delete(
 
     await CacheService.invalidatePattern(CacheKeys.userClientsPattern(req.user.id));
     await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.del(`client:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-stats:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-health:${req.user.id}:${req.params.id}`);
+    await CacheService.del(`client-invoices:${req.user.id}:${req.params.id}`);
 
     new SuccessResponse('Client deleted successfully', {}).send(res);
   }),
@@ -173,22 +182,16 @@ router.delete(
 router.get(
   '/:id/invoices',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const client = await ClientRepo.findByIdWithInvoices(
-      req.params.id,
-      req.user.id,
-    );
-
-    if (!client) {
-      throw new NotFoundError('Client not found');
+    const cacheKey = `client-invoices:${req.user.id}:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Client invoices fetched successfully', cached as object).send(res);
     }
-
-    new SuccessResponse('Client invoices fetched successfully', {
-      client: {
-        id: client.id,
-        companyName: client.companyName,
-      },
-      invoices: client.invoices,
-    }).send(res);
+    const client = await ClientRepo.findByIdWithInvoices(req.params.id, req.user.id);
+    if (!client) throw new NotFoundError('Client not found');
+    const payload = { client: { id: client.id, companyName: client.companyName }, invoices: client.invoices };
+    await CacheService.set(cacheKey, payload, 300);
+    new SuccessResponse('Client invoices fetched successfully', payload).send(res);
   }),
 );
 
@@ -199,15 +202,16 @@ router.get(
 router.get(
   '/:id/stats',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const stats = await ClientRepo.getStats(req.params.id, req.user.id);
-
-    if (!stats) {
-      throw new NotFoundError('Client not found');
+    const cacheKey = `client-stats:${req.user.id}:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Client stats fetched successfully', cached as object).send(res);
     }
-
-    new SuccessResponse('Client stats fetched successfully', {
-      stats,
-    }).send(res);
+    const stats = await ClientRepo.getStats(req.params.id, req.user.id);
+    if (!stats) throw new NotFoundError('Client not found');
+    const payload = { stats };
+    await CacheService.set(cacheKey, payload, 300);
+    new SuccessResponse('Client stats fetched successfully', payload).send(res);
   }),
 );
 
@@ -218,15 +222,16 @@ router.get(
 router.get(
   '/:id/health',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const health = await ClientRepo.getHealth(req.params.id, req.user.id);
-
-    if (!health) {
-      throw new NotFoundError('Client not found');
+    const cacheKey = `client-health:${req.user.id}:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    if (cached) {
+      return new SuccessResponse('Client health fetched successfully', cached as object).send(res);
     }
-
-    new SuccessResponse('Client health fetched successfully', {
-      health,
-    }).send(res);
+    const health = await ClientRepo.getHealth(req.params.id, req.user.id);
+    if (!health) throw new NotFoundError('Client not found');
+    const payload = { health };
+    await CacheService.set(cacheKey, payload, 300);
+    new SuccessResponse('Client health fetched successfully', payload).send(res);
   }),
 );
 
