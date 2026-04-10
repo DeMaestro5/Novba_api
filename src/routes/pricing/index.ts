@@ -1,5 +1,6 @@
 import express from 'express';
 import { SuccessResponse } from '../../core/ApiResponse';
+import prisma from '../../database';
 import PricingRepo from '../../database/repository/PricingRepo';
 import MarketRatesRepo from '../../database/repository/MarketRatesRepo';
 import ProjectEstimatorRepo from '../../database/repository/ProjectEstimatorRepo';
@@ -28,29 +29,84 @@ router.use(authentication);
 router.get(
   '/insights',
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const insights = await PricingRepo.getPricingInsights(req.user.id);
+    // Check Pro access — first 100 users get lifetime access automatically
+    const isPro =
+      req.user.lifetimeAccess === true ||
+      req.user.subscriptionTier === 'PRO' ||
+      req.user.subscriptionTier === 'STUDIO';
 
-    const message = formatPricingMessage(
-      insights.summary.isUndercharging,
-      insights.summary.percentBelow,
-      insights.summary.potentialIncrease || 0,
-    );
+    if (!isPro) {
+      return new SuccessResponse('Pricing insights fetched successfully', {
+        insights: [],
+        isPro: false,
+        hasAccess: false,
+      }).send(res);
+    }
 
-    const percentile = calculatePercentile(
-      insights.summary.currentRate,
-      insights.comparison.marketMin || 0,
-      insights.comparison.marketMax || 0,
-    );
+    // Build rich context from user's real data
+    const [insightContext, avgRate, user] = await Promise.all([
+      PricingRepo.buildInsightContext(req.user.id),
+      PricingRepo.calculateAverageRate(req.user.id),
+      prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { industry: true, experienceLevel: true, averageHourlyRate: true },
+      }),
+    ]);
 
-    new SuccessResponse('Pricing insights fetched successfully', {
-      insights: {
-        ...insights,
-        alert: message,
-        percentile,
-        confidenceDescription: getConfidenceDescription(
-          insights.comparison.confidence,
-        ),
-      },
+    const category = user?.industry || 'Web Development';
+    const experienceLevel = user?.experienceLevel || 'INTERMEDIATE';
+    const currentRate = avgRate || user?.averageHourlyRate?.toNumber() || 0;
+
+    // Get market data for this user's category
+    const marketRates = MarketRatesRepo.getMarketRates(category, undefined, experienceLevel);
+    const marketData = marketRates[0] ?? {
+      medianRate: 75,
+      minRate: 40,
+      maxRate: 150,
+    };
+
+    // Generate AI insights with Gemini
+    const { generatePricingInsightsWithAI } = await import('../../services/GeminiService');
+
+    let insights: Array<{
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      impact: string;
+      priority: string;
+    }> = [];
+
+    try {
+      insights = await generatePricingInsightsWithAI({
+        category,
+        experienceLevel,
+        avgRate: currentRate,
+        marketMedian: marketData.medianRate,
+        marketMin: marketData.minRate,
+        marketMax: marketData.maxRate,
+        ...insightContext,
+      });
+    } catch (err) {
+      console.error('[Gemini] generatePricingInsightsWithAI failed:', err);
+      // Fall back to static insights so Pro users always get something
+      insights = [
+        {
+          id: 'fallback_1',
+          type: 'tip',
+          title: 'Add more invoices for insights',
+          description:
+            'Your AI insights are generated from your real invoice data. Send and complete more invoices to unlock personalized analysis.',
+          impact: 'More data = more accurate insights',
+          priority: 'MEDIUM',
+        },
+      ];
+    }
+
+    return new SuccessResponse('Pricing insights fetched successfully', {
+      insights,
+      isPro: true,
+      hasAccess: true,
     }).send(res);
   }),
 );

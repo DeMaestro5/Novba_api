@@ -54,7 +54,7 @@ async function calculateAverageRate(userId: string): Promise<number> {
 
   // Filter for hourly rates (quantities that look like hours)
   const hourlyRates = rates.filter(
-    (r) => r.quantity > 0 && r.quantity <= 200 && r.rate > 0 && r.rate <= 500
+    (r) => r.quantity > 0 && r.quantity <= 200 && r.rate > 0 && r.rate <= 500,
   );
 
   if (hourlyRates.length === 0) return 0;
@@ -99,7 +99,8 @@ async function analyzeUndercharging(
 
   // Calculate how far below market rate
   const percentBelowMedian = ((marketMedian - userRate) / marketMedian) * 100;
-  const percentBelowAverage = ((marketAverage - userRate) / marketAverage) * 100;
+  const percentBelowAverage =
+    ((marketAverage - userRate) / marketAverage) * 100;
 
   const isUndercharging = userRate < marketMedian;
 
@@ -118,12 +119,11 @@ async function analyzeUndercharging(
     marketMin: marketData.minRate,
     marketMax: marketData.maxRate,
     recommendedRate: marketMedian,
-    potentialAnnualIncrease: calculatePotentialIncrease(
-      userRate,
-      marketMedian,
-    ),
+    potentialAnnualIncrease: calculatePotentialIncrease(userRate, marketMedian),
     message: isUndercharging
-      ? `You're charging ${Math.abs(Math.round(percentBelowMedian))}% below market rates`
+      ? `You're charging ${Math.abs(
+          Math.round(percentBelowMedian),
+        )}% below market rates`
       : 'Your rates are competitive with market standards',
     confidence,
     sampleSize: marketData.sampleSize,
@@ -200,7 +200,9 @@ async function generateRecommendations(userId: string) {
       recommendations.push({
         type: 'RATE_INCREASE',
         title: 'Increase Your Hourly Rate',
-        description: `Based on ${marketData.sampleSize.toLocaleString()} similar professionals, you could increase your rate from $${currentAvgRate}/hr to $${marketData.medianRate}/hr (${percentIncrease}% increase)`,
+        description: `Based on ${marketData.sampleSize.toLocaleString()} similar professionals, you could increase your rate from $${currentAvgRate}/hr to $${
+          marketData.medianRate
+        }/hr (${percentIncrease}% increase)`,
         impact: `Potential annual income increase: $${annualImpact.toLocaleString()}`,
         priority: 'HIGH',
       });
@@ -220,8 +222,12 @@ async function generateRecommendations(userId: string) {
         recommendations.push({
           type: 'SKILL_UPGRADE',
           title: 'Build Skills for Higher Rates',
-          description: `${nextLevel.toLowerCase()} professionals in your field charge $${nextLevelRates[0].medianRate}/hr on average`,
-          impact: `Potential increase: $${(nextLevelRates[0].medianRate - marketData.medianRate).toFixed(0)}/hr`,
+          description: `${nextLevel.toLowerCase()} professionals in your field charge $${
+            nextLevelRates[0].medianRate
+          }/hr on average`,
+          impact: `Potential increase: $${(
+            nextLevelRates[0].medianRate - marketData.medianRate
+          ).toFixed(0)}/hr`,
           priority: 'MEDIUM',
         });
       }
@@ -320,15 +326,135 @@ async function getPricingInsights(userId: string) {
       totalInvoices,
       averageRate: currentAvgRate,
       recentAverageRate: Math.round(recentAvg * 100) / 100,
-      lowestRate: historicalRates.length > 0
-        ? Math.min(...historicalRates.map((r) => r.rate))
-        : 0,
-      highestRate: historicalRates.length > 0
-        ? Math.max(...historicalRates.map((r) => r.rate))
-        : 0,
+      lowestRate:
+        historicalRates.length > 0
+          ? Math.min(...historicalRates.map((r) => r.rate))
+          : 0,
+      highestRate:
+        historicalRates.length > 0
+          ? Math.max(...historicalRates.map((r) => r.rate))
+          : 0,
     },
     category,
     experienceLevel,
+  };
+}
+
+/**
+ * Build rich context for Gemini insights generation.
+ * Fetches real numbers from the user's invoice, payment, and expense history.
+ */
+async function buildInsightContext(userId: string) {
+  const [invoices, expenses] = await Promise.all([
+    prisma.invoice.findMany({
+      where: { userId },
+      select: {
+        status: true,
+        total: true,
+        sentAt: true,
+        paidAt: true,
+        issueDate: true,
+        clientId: true,
+        payments: { select: { paidAt: true } },
+      },
+      orderBy: { issueDate: 'desc' },
+    }),
+    prisma.expense.findMany({
+      where: { userId },
+      select: { amount: true },
+    }),
+  ]);
+
+  // Total revenue from paid invoices
+  const paidInvoices = invoices.filter((inv) => inv.status === 'PAID');
+  const totalRevenue = paidInvoices.reduce(
+    (sum, inv) => sum + Number(inv.total),
+    0,
+  );
+
+  // Average days to pay (sentAt → paidAt)
+  const paymentTimes = paidInvoices
+    .filter((inv) => inv.sentAt && inv.paidAt)
+    .map((inv) => {
+      const sent = new Date(inv.sentAt!).getTime();
+      const paid = new Date(inv.paidAt!).getTime();
+      return Math.round((paid - sent) / (1000 * 60 * 60 * 24));
+    });
+  const avgDaysToPay =
+    paymentTimes.length > 0
+      ? Math.round(
+          paymentTimes.reduce((a, b) => a + b, 0) / paymentTimes.length,
+        )
+      : 0;
+
+  // Overdue rate
+  const sentInvoices = invoices.filter((inv) =>
+    ['SENT', 'OVERDUE', 'PAID', 'PARTIALLY_PAID'].includes(inv.status),
+  );
+  const overdueCount = invoices.filter(
+    (inv) => inv.status === 'OVERDUE',
+  ).length;
+  const overdueRate =
+    sentInvoices.length > 0
+      ? Math.round((overdueCount / sentInvoices.length) * 100)
+      : 0;
+
+  // Revenue growth: last 3 months vs prior 3 months
+  const now = new Date();
+  const threeMonthsAgo = new Date(now);
+  threeMonthsAgo.setMonth(now.getMonth() - 3);
+  const sixMonthsAgo = new Date(now);
+  sixMonthsAgo.setMonth(now.getMonth() - 6);
+
+  const recentRevenue = paidInvoices
+    .filter((inv) => new Date(inv.issueDate) >= threeMonthsAgo)
+    .reduce((sum, inv) => sum + Number(inv.total), 0);
+  const priorRevenue = paidInvoices
+    .filter(
+      (inv) =>
+        new Date(inv.issueDate) >= sixMonthsAgo &&
+        new Date(inv.issueDate) < threeMonthsAgo,
+    )
+    .reduce((sum, inv) => sum + Number(inv.total), 0);
+
+  const revenueGrowth =
+    priorRevenue > 0
+      ? Math.round(((recentRevenue - priorRevenue) / priorRevenue) * 100)
+      : 0;
+
+  // Client concentration: top client's share of revenue
+  const revenueByClient: Record<string, number> = {};
+  paidInvoices.forEach((inv) => {
+    revenueByClient[inv.clientId] =
+      (revenueByClient[inv.clientId] ?? 0) + Number(inv.total);
+  });
+  const clientRevenues = Object.values(revenueByClient);
+  const topClientRevenue =
+    clientRevenues.length > 0 ? Math.max(...clientRevenues) : 0;
+  const topClientRevenuePct =
+    totalRevenue > 0
+      ? Math.round((topClientRevenue / totalRevenue) * 100)
+      : 0;
+
+  // Total expenses and ratio
+  const totalExpenses = expenses.reduce(
+    (sum, exp) => sum + Number(exp.amount),
+    0,
+  );
+  const expenseToRevenueRatio =
+    totalRevenue > 0
+      ? Math.round((totalExpenses / totalRevenue) * 100)
+      : 0;
+
+  return {
+    totalInvoices: invoices.length,
+    totalRevenue: Math.round(totalRevenue),
+    avgDaysToPay,
+    overdueRate,
+    revenueGrowth,
+    topClientRevenuePct,
+    totalExpenses: Math.round(totalExpenses),
+    expenseToRevenueRatio,
   };
 }
 
@@ -338,4 +464,5 @@ export default {
   analyzeUndercharging,
   generateRecommendations,
   getPricingInsights,
+  buildInsightContext,
 };

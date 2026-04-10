@@ -236,3 +236,110 @@ Generate exactly 5 recommendations. Respond ONLY with a JSON array. No markdown,
     throw err;
   }
 }
+
+/**
+ * Generate personalized pricing insights from real user data.
+ * Returns 4-6 actionable insight cards with specific numbers.
+ */
+export async function generatePricingInsightsWithAI(context: {
+  category: string;
+  experienceLevel: string;
+  avgRate: number;
+  marketMedian: number;
+  marketMin: number;
+  marketMax: number;
+  totalInvoices: number;
+  totalRevenue: number;
+  avgDaysToPay: number;
+  overdueRate: number;
+  revenueGrowth: number;
+  topClientRevenuePct: number;
+  totalExpenses: number;
+  expenseToRevenueRatio: number;
+}): Promise<
+  Array<{
+    id: string;
+    type: 'warning' | 'opportunity' | 'positive' | 'tip';
+    title: string;
+    description: string;
+    impact: string;
+    priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  }>
+> {
+  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+  const isUndercharging =
+    context.avgRate > 0 && context.avgRate < context.marketMedian;
+  const rateDelta = context.marketMedian - context.avgRate;
+  const annualGap = Math.round(rateDelta * 40 * 48);
+
+  const prompt = `
+You are a senior freelance business analyst. Generate personalized pricing insights for a freelancer based on their REAL business data. Be specific, direct, and use the exact numbers provided.
+
+FREELANCER'S ACTUAL DATA:
+- Skill category: ${context.category}
+- Experience level: ${context.experienceLevel}
+- Their average rate: $${context.avgRate}/hr
+- Market median for their role: $${context.marketMedian}/hr (range: $${
+    context.marketMin
+  }–$${context.marketMax}/hr)
+- Total invoices issued: ${context.totalInvoices}
+- Total revenue to date: $${context.totalRevenue.toLocaleString()}
+- Average days to get paid: ${
+    context.avgDaysToPay
+  } days (industry standard: 14 days)
+- Overdue invoice rate: ${context.overdueRate}% of invoices
+- Revenue growth (last 3 months vs prior 3 months): ${
+    context.revenueGrowth > 0 ? '+' : ''
+  }${context.revenueGrowth}%
+- Top client revenue concentration: ${
+    context.topClientRevenuePct
+  }% of total revenue from one client
+- Total expenses: $${context.totalExpenses.toLocaleString()}
+- Expense-to-revenue ratio: ${context.expenseToRevenueRatio}%
+
+RULES:
+- Generate exactly 5 insight cards
+- Every card MUST reference specific numbers from the data above — no generic advice
+- type must be one of: "warning" (problem), "opportunity" (upside), "positive" (strength), "tip" (strategy)
+- priority must be: "HIGH" for issues costing money now, "MEDIUM" for important improvements, "LOW" for long-term
+- title: max 6 words, punchy
+- description: 2 sentences max, specific numbers required
+- impact: one line, quantified where possible
+
+Prioritize insights in this order:
+1. Rate gap (if undercharging by >15%)
+2. Payment collection speed (if >21 days)
+3. Client concentration risk (if >60% from one client)
+4. Overdue rate (if >20%)
+5. Revenue trend (growing or declining)
+6. Expense ratio (if >30%)
+
+Respond ONLY with a JSON array. No markdown, no backticks, no explanation outside the JSON.
+
+[
+  {
+    "id": "insight_1",
+    "type": "warning|opportunity|positive|tip",
+    "title": "<max 6 words>",
+    "description": "<2 sentences with specific numbers from their data>",
+    "impact": "<quantified impact>",
+    "priority": "HIGH|MEDIUM|LOW"
+  }
+]
+`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    // Ensure IDs are unique
+    return parsed.map((item: Record<string, unknown>, i: number) => ({
+      ...item,
+      id: `insight_${i + 1}_${Date.now()}`,
+    }));
+  } catch (err) {
+    throw err;
+  }
+}
