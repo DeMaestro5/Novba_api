@@ -24,7 +24,11 @@ export class CacheService {
   /**
    * Set a cached value with TTL in seconds.
    */
-  static async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+  static async set<T>(
+    key: string,
+    value: T,
+    ttlSeconds: number,
+  ): Promise<void> {
     const redis = getRedis();
     if (!redis) return;
 
@@ -74,7 +78,9 @@ export class CacheService {
 
       if (keysToDelete.length > 0) {
         await Promise.all(keysToDelete.map((k) => redis.del(k)));
-        Logger.debug(`[Cache] Invalidated ${keysToDelete.length} keys matching: ${pattern}`);
+        Logger.debug(
+          `[Cache] Invalidated ${keysToDelete.length} keys matching: ${pattern}`,
+        );
       }
     } catch (err) {
       Logger.warn(`[Cache] Pattern invalidation failed for ${pattern}`, err);
@@ -87,6 +93,47 @@ export class CacheService {
    */
   static async invalidateUserDashboard(userId: string): Promise<void> {
     const { CacheKeys } = await import('./keys');
-    await CacheService.invalidatePattern(CacheKeys.userDashboardPattern(userId));
+    // Upstash SCAN is unreliable — explicitly delete all known dashboard key shapes
+    // rather than relying on pattern scanning
+    const now = new Date();
+
+    const keysToDelete = [
+      CacheKeys.dashboardHealth(userId),
+      CacheKeys.dashboardActivity(userId, 10),
+      CacheKeys.dashboardActivity(userId, 5),
+      CacheKeys.dashboardCashFlow(userId, 6),
+      CacheKeys.dashboardClientRevenue(userId, 10),
+      CacheKeys.dashboardClientRevenue(userId, 5),
+      // Delete overview keys for current and adjacent date ranges
+      // by generating keys for common startDate/endDate combos
+      CacheKeys.dashboardOverview(userId, '', ''),
+    ];
+
+    // Generate the exact overview cache key the frontend would have requested
+    // useDashboard passes startDate/endDate computed from selectedPeriod
+    // Delete keys for all period variants
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const dateVariants: [string, string][] = [
+      // month (default)
+      [new Date(year, month, 1).toISOString(), now.toISOString()],
+      // empty (no date params)
+      ['', ''],
+    ];
+    dateVariants.forEach(([s, e]) => {
+      keysToDelete.push(CacheKeys.dashboardOverview(userId, s, e));
+      keysToDelete.push(CacheKeys.dashboardIncomeChart(userId, s, e, 'week'));
+      keysToDelete.push(CacheKeys.dashboardIncomeChart(userId, s, e, 'month'));
+      keysToDelete.push(
+        CacheKeys.dashboardExpensesChart(userId, s, e, 'month'),
+      );
+    });
+    // Delete all without waiting — fire and forget is fine here
+    await Promise.allSettled(keysToDelete.map((k) => CacheService.del(k)));
+
+    // Also attempt pattern scan as fallback (may work on some Redis configs)
+    await CacheService.invalidatePattern(
+      CacheKeys.userDashboardPattern(userId),
+    ).catch(() => {});
   }
 }
