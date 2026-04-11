@@ -5,6 +5,7 @@ import { generateInvoiceHTML } from '../routes/invoices/utils';
 import { generatePdf } from './pdf';
 import { sendEmail } from './Email.service';
 import { logEmail } from './emailLog';
+import SettingsRepo from '../database/repository/SettingsRepo';
 
 /**
  * Scheduled Send Job
@@ -84,9 +85,11 @@ export function startScheduledSendJob(): void {
             filename: `invoice-${invoice.invoiceNumber}.pdf`,
           });
 
-          if (pdfBuffer) {
+          if (!pdfBuffer) {
+            emailError = 'PDF generation failed';
+          } else {
             const subject = `Invoice ${invoice.invoiceNumber} from ${
-              invoice.user?.name || 'Us'
+              invoice.user?.businessName || invoice.user?.name || 'Us'
             }`;
             const senderName =
               invoice.user?.businessName ||
@@ -104,6 +107,38 @@ export function startScheduledSendJob(): void {
               year: 'numeric',
             });
 
+            // Generate payment link — same logic as the send route
+            let paymentLinkUrl: string | null = null;
+            try {
+              const { createStripePaymentIntent, generatePaymentLink } =
+                await import('../routes/payments/utils');
+              const stripeSettings = await SettingsRepo.getStripeSettings(
+                invoice.userId,
+              );
+              if (
+                stripeSettings?.stripeAccountId &&
+                stripeSettings.stripeChargesEnabled
+              ) {
+                const paymentIntent = await createStripePaymentIntent(
+                  Number(invoice.total),
+                  invoice.currency,
+                  invoice.id,
+                  invoice.client?.email ?? undefined,
+                  invoice.userId,
+                );
+                paymentLinkUrl = generatePaymentLink(
+                  invoice.id,
+                  paymentIntent.client_secret!,
+                );
+              }
+            } catch (paymentErr) {
+              // Payment link failure does not block the email
+              console.warn(
+                `[ScheduledSendJob] Payment link generation failed for ${invoice.invoiceNumber}:`,
+                paymentErr,
+              );
+            }
+
             const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -113,9 +148,7 @@ export function startScheduledSendJob(): void {
     <div style="margin-bottom:28px;">
       <span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span>
     </div>
-    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${
-      invoice.invoiceNumber
-    }</h1>
+    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Invoice ${invoice.invoiceNumber}</h1>
     <p style="color:#6b7280;margin:0 0 28px 0;font-size:15px;">From ${senderName}</p>
     <p style="color:#374151;margin:0 0 20px 0;font-size:15px;">Hi ${
       invoice.client?.contactName || invoice.client?.companyName
@@ -124,9 +157,7 @@ export function startScheduledSendJob(): void {
     <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:28px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
         <span style="color:#6b7280;font-size:13px;">Invoice</span>
-        <span style="color:#111827;font-weight:700;font-size:13px;">${
-          invoice.invoiceNumber
-        }</span>
+        <span style="color:#111827;font-weight:700;font-size:13px;">${invoice.invoiceNumber}</span>
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
         <span style="color:#6b7280;font-size:13px;">Amount due</span>
@@ -137,6 +168,18 @@ export function startScheduledSendJob(): void {
         <span style="color:#111827;font-weight:700;font-size:13px;">${formattedDueDate}</span>
       </div>
     </div>
+    ${
+      paymentLinkUrl
+        ? `
+    <div style="text-align:center;margin:0 0 28px 0;">
+      <a href="${paymentLinkUrl}" style="display:inline-block;background-color:#ea580c;color:#fff;text-decoration:none;padding:14px 36px;border-radius:10px;font-weight:700;font-size:15px;">
+        Pay Now →
+      </a>
+      <p style="color:#9ca3af;font-size:12px;margin:10px 0 0 0;">Secure payment powered by Stripe</p>
+    </div>
+    `
+        : ''
+    }
     <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">
       The full invoice is attached as a PDF. If you have any questions, reply to this email.
     </p>
@@ -157,13 +200,11 @@ export function startScheduledSendJob(): void {
               ],
             });
             if (!emailSent) emailError = 'Email provider did not confirm send';
-          } else {
-            emailError = 'PDF generation failed';
           }
         } catch (err) {
           emailError = err instanceof Error ? err.message : 'Send failed';
           console.error(
-            `[ScheduledSendJob] Failed to send invoice ${invoice.invoiceNumber}:`,
+            `[ScheduledSendJob] Error generating/sending invoice ${invoice.invoiceNumber}:`,
             emailError,
           );
         }
@@ -179,6 +220,17 @@ export function startScheduledSendJob(): void {
             updatedAt: new Date(),
           },
         });
+
+        // Bust Redis cache so frontend sees SENT status immediately
+        try {
+          const { CacheService } = await import('../cache/CacheService');
+          const { CacheKeys } = await import('../cache/keys');
+          await CacheService.del(`invoice:${invoice.userId}:${invoice.id}`);
+          await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(invoice.userId));
+          await CacheService.invalidateUserDashboard(invoice.userId);
+        } catch {
+          // Cache invalidation failure never blocks the send
+        }
 
         await logEmail({
           userId: invoice.userId,
