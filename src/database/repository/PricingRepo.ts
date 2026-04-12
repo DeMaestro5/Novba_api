@@ -52,12 +52,23 @@ async function calculateAverageRate(userId: string): Promise<number> {
 
   if (rates.length === 0) return 0;
 
-  // Filter for hourly rates (quantities that look like hours)
+  // Try hourly rates first (quantity looks like hours, rate looks like hourly)
   const hourlyRates = rates.filter(
     (r) => r.quantity > 0 && r.quantity <= 200 && r.rate > 0 && r.rate <= 500,
   );
 
-  if (hourlyRates.length === 0) return 0;
+  // If no hourly rates found, treat each line item total as a project fee
+  // and estimate an effective hourly rate assuming ~8hrs per unit
+  if (hourlyRates.length === 0) {
+    const projectRates = rates.filter((r) => r.total > 0);
+    if (projectRates.length > 0) {
+      const avgProjectValue =
+        projectRates.reduce((sum, r) => sum + r.total, 0) / projectRates.length;
+      // Estimate effective rate: avg project value / assumed 8hr unit
+      return Math.round(Math.min(avgProjectValue / 8, 300) * 100) / 100;
+    }
+    return 0;
+  }
 
   const avgRate =
     hourlyRates.reduce((sum, r) => sum + r.rate, 0) / hourlyRates.length;
