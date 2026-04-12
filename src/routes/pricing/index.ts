@@ -22,6 +22,58 @@ const router = express.Router();
 router.use(authentication);
 /*---------------------------------------------------------*/
 
+function generateDeterministicInsights(context: {
+  category: string; experienceLevel: string; effectiveRate: number;
+  marketMedian: number; totalInvoices: number; totalRevenue: number;
+  avgDaysToPay: number; overdueRate: number; revenueGrowth: number;
+  topClientRevenuePct: number; expenseToRevenueRatio: number;
+}) {
+  const insights: Array<{id: string; type: string; title: string; description: string; impact: string; priority: string}> = [];
+  let i = 1;
+
+  // Rate gap
+  if (context.effectiveRate > 0 && context.effectiveRate < context.marketMedian * 0.85) {
+    const gap = context.marketMedian - context.effectiveRate;
+    const annual = Math.round(gap * 40 * 48);
+    insights.push({ id: `insight_${i++}`, type: 'opportunity', title: 'You\'re below market rate', description: `Your effective rate of $${context.effectiveRate}/hr is $${Math.round(gap)}/hr below the $${context.marketMedian}/hr market median for ${context.category}. Raising your rate to market level would significantly increase your earnings.`, impact: `+$${annual.toLocaleString()}/year potential`, priority: 'HIGH' });
+  } else if (context.effectiveRate >= context.marketMedian) {
+    insights.push({ id: `insight_${i++}`, type: 'positive', title: 'Competitive rate', description: `Your rate of $${context.effectiveRate}/hr meets or exceeds the $${context.marketMedian}/hr market median for ${context.category}. You\'re well-positioned in your market.`, impact: 'Keep raising annually', priority: 'LOW' });
+  }
+
+  // Client concentration
+  if (context.topClientRevenuePct >= 70) {
+    insights.push({ id: `insight_${i++}`, type: 'warning', title: 'Client concentration risk', description: `${context.topClientRevenuePct}% of your $${context.totalRevenue.toLocaleString()} revenue comes from a single client. Losing this client would eliminate most of your income.`, impact: 'Diversify to <60% per client', priority: 'HIGH' });
+  }
+
+  // Payment speed
+  if (context.avgDaysToPay > 21) {
+    insights.push({ id: `insight_${i++}`, type: 'warning', title: 'Slow payment collection', description: `Your invoices take ${context.avgDaysToPay} days on average to get paid — ${context.avgDaysToPay - 14} days longer than the 14-day industry standard. This hurts your cash flow.`, impact: 'Add payment reminders', priority: 'HIGH' });
+  } else if (context.avgDaysToPay > 0 && context.avgDaysToPay <= 14) {
+    insights.push({ id: `insight_${i++}`, type: 'positive', title: 'Fast payment collection', description: `Your clients pay in ${context.avgDaysToPay} days on average — faster than the 14-day industry standard. Your payment terms and follow-up are working well.`, impact: 'Maintain current terms', priority: 'LOW' });
+  }
+
+  // Overdue rate
+  if (context.overdueRate > 20) {
+    insights.push({ id: `insight_${i++}`, type: 'warning', title: 'High overdue rate', description: `${context.overdueRate}% of your invoices are overdue. This indicates either overly lenient payment terms or clients who consistently pay late.`, impact: 'Set up auto-reminders', priority: 'HIGH' });
+  }
+
+  // Revenue growth
+  if (context.revenueGrowth > 20) {
+    insights.push({ id: `insight_${i++}`, type: 'positive', title: 'Strong revenue growth', description: `Your revenue grew ${context.revenueGrowth}% compared to the prior 3-month period. This is a strong signal — consider raising rates to capture more value while demand is high.`, impact: 'Time to raise rates', priority: 'MEDIUM' });
+  } else if (context.revenueGrowth < -10) {
+    insights.push({ id: `insight_${i++}`, type: 'warning', title: 'Revenue declining', description: `Revenue dropped ${Math.abs(context.revenueGrowth)}% vs the prior 3 months. This could indicate project pipeline gaps or seasonal slowdown.`, impact: 'Review pipeline now', priority: 'HIGH' });
+  }
+
+  // Tip — always include a strategic tip
+  if (context.totalInvoices < 10) {
+    insights.push({ id: `insight_${i++}`, type: 'tip', title: 'Build your invoice history', description: `With ${context.totalInvoices} invoices so far, you\'re building your track record. Each completed project strengthens your case for higher rates and better clients.`, impact: 'More data = better insights', priority: 'LOW' });
+  } else {
+    insights.push({ id: `insight_${i++}`, type: 'tip', title: 'Annual rate review', description: `With ${context.totalInvoices} invoices completed, you have strong leverage to justify a rate increase. Schedule a review every 12 months minimum.`, impact: 'Raises every 12 months', priority: 'MEDIUM' });
+  }
+
+  return insights.slice(0, 5);
+}
+
 /**
  * GET /api/v1/pricing/insights
  * Get comprehensive pricing insights for user
@@ -105,23 +157,13 @@ router.get(
         ...insightContext,
       });
     } catch (err) {
-      console.error('[Gemini] generatePricingInsightsWithAI failed:', {
-        message: (err as Error)?.message,
-        stack: (err as Error)?.stack,
-        context: { category, experienceLevel, effectiveRate, insightContext },
+      console.error('[Gemini] generatePricingInsightsWithAI failed:', { message: (err as Error)?.message });
+      // Generate real insights from data without AI
+      insights = generateDeterministicInsights({
+        category, experienceLevel, effectiveRate,
+        marketMedian: marketData.medianRate,
+        ...insightContext,
       });
-      // Fall back to static insights so Pro users always get something
-      insights = [
-        {
-          id: 'fallback_1',
-          type: 'tip',
-          title: 'Add more invoices for insights',
-          description:
-            'Your AI insights are generated from your real invoice data. Send and complete more invoices to unlock personalized analysis.',
-          impact: 'More data = more accurate insights',
-          priority: 'MEDIUM',
-        },
-      ];
     }
 
     return new SuccessResponse('Pricing insights fetched successfully', {
