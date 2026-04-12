@@ -49,7 +49,11 @@ router.get(
       PricingRepo.calculateAverageRate(req.user.id),
       prisma.user.findUnique({
         where: { id: req.user.id },
-        select: { industry: true, experienceLevel: true, averageHourlyRate: true },
+        select: {
+          industry: true,
+          experienceLevel: true,
+          averageHourlyRate: true,
+        },
       }),
     ]);
 
@@ -58,7 +62,11 @@ router.get(
     const currentRate = avgRate || user?.averageHourlyRate?.toNumber() || 0;
 
     // Get market data for this user's category
-    const marketRates = MarketRatesRepo.getMarketRates(category, undefined, experienceLevel);
+    const marketRates = MarketRatesRepo.getMarketRates(
+      category,
+      undefined,
+      experienceLevel,
+    );
     const marketData = marketRates[0] ?? {
       medianRate: 75,
       minRate: 40,
@@ -66,7 +74,9 @@ router.get(
     };
 
     // Generate AI insights with Gemini
-    const { generatePricingInsightsWithAI } = await import('../../services/GeminiService');
+    const { generatePricingInsightsWithAI } = await import(
+      '../../services/GeminiService'
+    );
 
     let insights: Array<{
       id: string;
@@ -77,18 +87,29 @@ router.get(
       priority: string;
     }> = [];
 
+    // If avgRate is 0 (project-based billing), estimate from total revenue
+    const effectiveRate = currentRate > 0
+      ? currentRate
+      : insightContext.totalRevenue > 0 && insightContext.totalInvoices > 0
+        ? Math.round(insightContext.totalRevenue / (insightContext.totalInvoices * 8)) // assume ~8hr avg project
+        : marketData.medianRate; // fall back to market median
+
     try {
       insights = await generatePricingInsightsWithAI({
         category,
         experienceLevel,
-        avgRate: currentRate,
+        avgRate: effectiveRate,
         marketMedian: marketData.medianRate,
         marketMin: marketData.minRate,
         marketMax: marketData.maxRate,
         ...insightContext,
       });
     } catch (err) {
-      console.error('[Gemini] generatePricingInsightsWithAI failed:', err);
+      console.error('[Gemini] generatePricingInsightsWithAI failed:', {
+        message: (err as Error)?.message,
+        stack: (err as Error)?.stack,
+        context: { category, experienceLevel, effectiveRate, insightContext },
+      });
       // Fall back to static insights so Pro users always get something
       insights = [
         {
