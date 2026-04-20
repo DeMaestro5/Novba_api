@@ -50,6 +50,20 @@ router.get(
       throw new NotFoundError('Settings not found');
     }
 
+    // Auto-persist portfolioSlug if null but name exists
+    if (!settings.portfolioSlug && settings.name) {
+      const autoSlug = settings.name
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      await prisma.user.update({
+        where: { id: userId },
+        data: { portfolioSlug: autoSlug },
+      });
+      settings.portfolioSlug = autoSlug;
+    }
+
     const payload = { settings: formatSettings(settings) };
     await CacheService.set(cacheKey, payload, TTL.SETTINGS);
 
