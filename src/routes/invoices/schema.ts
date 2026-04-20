@@ -68,4 +68,13 @@ export default {
   batchSend: Joi.object().keys({
     invoiceIds: Joi.array().items(Joi.string().uuid()).required().min(1).max(50),
   }),
+
+  markPaid: Joi.object({
+    amount: Joi.number().positive().required(),
+    paymentMethod: Joi.string()
+      .valid('STRIPE', 'BANK_TRANSFER', 'CASH', 'CHECK', 'MOBILE_MONEY', 'CRYPTO', 'OTHER')
+      .required(),
+    paidAt: Joi.string().isoDate().required(),
+    notes: Joi.string().max(500).optional().allow(''),
+  }),
 };

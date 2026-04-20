@@ -22,7 +22,8 @@ import {
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
-import { EmailStatus, EmailType, InvoiceStatus } from '@prisma/client';
+import { EmailStatus, EmailType, InvoiceStatus, PaymentMethod } from '@prisma/client';
+import PaymentRepo from '../../database/repository/PaymentRepo';
 import paymentLink from './payment-link';
 import { generatePdf } from '../../services/pdf';
 import { sendEmail } from '../../services/Email.service';
@@ -764,6 +765,67 @@ router.post(
       count: sentInvoices.length,
       invoices: sentInvoices,
       results,
+    }).send(res);
+  }),
+);
+
+/**
+ * POST /api/v1/invoices/:id/mark-paid
+ * Record a payment and update invoice status
+ */
+router.post(
+  '/:id/mark-paid',
+  validator(schema.markPaid),
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
+    if (!invoice) throw new NotFoundError('Invoice not found');
+
+    if (invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.CANCELLED) {
+      throw new BadRequestError(`Invoice is already ${invoice.status.toLowerCase()}`);
+    }
+
+    const { amount, paymentMethod, paidAt, notes } = req.body;
+
+    if (amount > Number(invoice.total)) {
+      throw new BadRequestError('Payment amount cannot exceed invoice total');
+    }
+
+    await PaymentRepo.create({
+      invoiceId: invoice.id,
+      userId: req.user.id,
+      amount,
+      currency: invoice.currency,
+      paymentMethod: paymentMethod as PaymentMethod,
+      status: 'COMPLETED',
+      paidAt: new Date(paidAt),
+      notes,
+    });
+
+    const totalPaid = await PaymentRepo.getTotalPaidForInvoice(invoice.id);
+
+    let updatedInvoice;
+    if (totalPaid >= Number(invoice.total)) {
+      updatedInvoice = await InvoiceRepo.updateStatus(
+        invoice.id,
+        req.user.id,
+        InvoiceStatus.PAID,
+        { paidAt: new Date(paidAt) },
+      );
+    } else if (totalPaid > 0) {
+      updatedInvoice = await InvoiceRepo.updateStatus(
+        invoice.id,
+        req.user.id,
+        InvoiceStatus.PARTIALLY_PAID,
+      );
+    } else {
+      updatedInvoice = invoice;
+    }
+
+    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidateUserDashboard(req.user.id);
+
+    new SuccessResponse('Invoice payment recorded successfully', {
+      invoice: getInvoiceData(updatedInvoice),
     }).send(res);
   }),
 );
