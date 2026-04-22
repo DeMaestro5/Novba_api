@@ -22,7 +22,12 @@ import {
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
-import { EmailStatus, EmailType, InvoiceStatus, PaymentMethod } from '@prisma/client';
+import {
+  EmailStatus,
+  EmailType,
+  InvoiceStatus,
+  PaymentMethod,
+} from '@prisma/client';
 import PaymentRepo from '../../database/repository/PaymentRepo';
 import paymentLink from './payment-link';
 import { generatePdf } from '../../services/pdf';
@@ -212,7 +217,6 @@ router.get(
  */
 router.put(
   '/:id',
-  validator(schema.invoiceId),
   validator(schema.update),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const exists = await InvoiceRepo.existsForUser(req.params.id, req.user.id);
@@ -780,8 +784,13 @@ router.post(
     const invoice = await InvoiceRepo.findById(req.params.id, req.user.id);
     if (!invoice) throw new NotFoundError('Invoice not found');
 
-    if (invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.CANCELLED) {
-      throw new BadRequestError(`Invoice is already ${invoice.status.toLowerCase()}`);
+    if (
+      invoice.status === InvoiceStatus.PAID ||
+      invoice.status === InvoiceStatus.CANCELLED
+    ) {
+      throw new BadRequestError(
+        `Invoice is already ${invoice.status.toLowerCase()}`,
+      );
     }
 
     const { amount, paymentMethod, paidAt, notes } = req.body;
@@ -821,7 +830,9 @@ router.post(
       updatedInvoice = invoice;
     }
 
-    await CacheService.invalidatePattern(CacheKeys.userInvoicesPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
     await CacheService.invalidateUserDashboard(req.user.id);
 
     new SuccessResponse('Invoice payment recorded successfully', {
