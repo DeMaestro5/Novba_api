@@ -39,6 +39,12 @@ function calculateHealthScore(
 async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
   const now = new Date();
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { defaultCurrency: true },
+  });
+  const userCurrency = user?.defaultCurrency ?? 'USD';
+
   // Resolve current period bounds
   const currentStart =
     startDate ?? new Date(now.getFullYear(), now.getMonth(), 1);
@@ -55,11 +61,11 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
   // ── Revenue ──────────────────────────────────────────────────────────────
   const [currentRevenueData, prevRevenueData] = await Promise.all([
     prisma.invoice.aggregate({
-      where: { userId, status: 'PAID', paidAt: currentDateFilter },
+      where: { userId, currency: userCurrency, status: 'PAID', paidAt: currentDateFilter },
       _sum: { total: true },
     }),
     prisma.invoice.aggregate({
-      where: { userId, status: 'PAID', paidAt: prevDateFilter },
+      where: { userId, currency: userCurrency, status: 'PAID', paidAt: prevDateFilter },
       _sum: { total: true },
     }),
   ]);
@@ -69,20 +75,20 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
 
   // ── Pending Invoices (SENT but not yet overdue) ───────────────────────────
   const pendingData = await prisma.invoice.aggregate({
-    where: { userId, status: 'SENT' },
+    where: { userId, currency: userCurrency, status: 'SENT' },
     _sum: { total: true },
     _count: { _all: true },
   });
 
   // ── Outstanding (SENT + OVERDUE + PARTIALLY_PAID) ────────────────────────
   const outstandingData = await prisma.invoice.aggregate({
-    where: { userId, status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] } },
+    where: { userId, currency: userCurrency, status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] } },
     _sum: { total: true },
   });
 
   // Correct outstanding by subtracting partial payments already made
   const partiallyPaidInvoices = await prisma.invoice.findMany({
-    where: { userId, status: 'PARTIALLY_PAID' },
+    where: { userId, currency: userCurrency, status: 'PARTIALLY_PAID' },
     include: { payments: { where: { status: 'COMPLETED' } } },
   });
 
@@ -150,17 +156,17 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
       total: currentRevenue,
       previousTotal: prevRevenue,
       percentageChange: calculatePercentageChange(currentRevenue, prevRevenue),
-      currency: 'USD',
+      currency: userCurrency,
     },
     pendingInvoices: {
       total: Number(pendingData._sum.total || 0),
       count: pendingData._count._all, // → "8 invoices awaiting payment"
-      currency: 'USD',
+      currency: userCurrency,
     },
     outstanding: {
       total: actualOutstanding,
       overdueCount, // → "1 overdue"
-      currency: 'USD',
+      currency: userCurrency,
     },
     activeClients: {
       count: currentActiveClients,
@@ -173,11 +179,11 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
     // ── Supporting data ───────────────────────────────────────────────────
     expenses: {
       total: Number(expensesData._sum.amount || 0),
-      currency: 'USD',
+      currency: userCurrency,
     },
     profit: {
       total: currentRevenue - Number(expensesData._sum.amount || 0),
-      currency: 'USD',
+      currency: userCurrency,
     },
     counts: {
       totalClients,
@@ -200,9 +206,16 @@ async function getIncomeChart(
   endDate: Date,
   groupBy: 'month' | 'week' | 'day' = 'month',
 ) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { defaultCurrency: true },
+  });
+  const userCurrency = user?.defaultCurrency ?? 'USD';
+
   const invoices = await prisma.invoice.findMany({
     where: {
       userId,
+      currency: userCurrency,
       status: 'PAID',
       paidAt: { gte: startDate, lte: endDate },
     },
@@ -235,7 +248,7 @@ async function getIncomeChart(
   });
 
   return Array.from(grouped.entries())
-    .map(([period, amount]) => ({ period, amount, currency: 'USD' }))
+    .map(([period, amount]) => ({ period, amount, currency: userCurrency }))
     .sort((a, b) => a.period.localeCompare(b.period));
 }
 
@@ -251,6 +264,12 @@ async function getExpensesChart(
   endDate: Date,
   groupBy: 'month' | 'week' | 'day' = 'month',
 ) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { defaultCurrency: true },
+  });
+  const userCurrency = user?.defaultCurrency ?? 'USD';
+
   const expenses = await prisma.expense.findMany({
     where: { userId, date: { gte: startDate, lte: endDate } },
     select: { amount: true, date: true, category: true },
@@ -290,10 +309,10 @@ async function getExpensesChart(
 
   return {
     byPeriod: Array.from(groupedByPeriod.entries())
-      .map(([period, amount]) => ({ period, amount, currency: 'USD' }))
+      .map(([period, amount]) => ({ period, amount, currency: userCurrency }))
       .sort((a, b) => a.period.localeCompare(b.period)),
     byCategory: Array.from(groupedByCategory.entries())
-      .map(([category, amount]) => ({ category, amount, currency: 'USD' }))
+      .map(([category, amount]) => ({ category, amount, currency: userCurrency }))
       .sort((a, b) => b.amount - a.amount),
     total: expenses.reduce((sum, e) => sum + Number(e.amount), 0),
   };
@@ -306,11 +325,17 @@ async function getExpensesChart(
  * Powers: Top Clients widget
  */
 async function getClientRevenue(userId: string, limit: number = 10) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { defaultCurrency: true },
+  });
+  const userCurrency = user?.defaultCurrency ?? 'USD';
+
   const clients = await prisma.client.findMany({
     where: { userId },
     include: {
       invoices: {
-        where: { status: 'PAID' },
+        where: { status: 'PAID', currency: userCurrency },
         select: { total: true },
       },
       _count: { select: { invoices: true } },
@@ -363,7 +388,7 @@ async function getClientRevenue(userId: string, limit: number = 10) {
       grandTotal: Math.round(grandTotal),
       concentrationPercent,
       concentrationStatus,
-      currency: 'USD',
+      currency: userCurrency,
     },
   };
 }
@@ -375,6 +400,12 @@ async function getClientRevenue(userId: string, limit: number = 10) {
  * Powers: Cash Flow Forecast chart
  */
 async function getCashFlowForecast(userId: string, months: number = 6) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { defaultCurrency: true },
+  });
+  const userCurrency = user?.defaultCurrency ?? 'USD';
+
   const today = new Date();
   const endDate = new Date(today);
   endDate.setMonth(endDate.getMonth() + months);
@@ -382,6 +413,7 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
   const upcomingInvoices = await prisma.invoice.findMany({
     where: {
       userId,
+      currency: userCurrency,
       status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] },
       dueDate: { lte: endDate },
     },
@@ -439,7 +471,7 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
       month,
       projected: Math.round(amounts.projected),
       conservative: Math.round(amounts.conservative),
-      currency: 'USD',
+      currency: userCurrency,
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
@@ -450,7 +482,7 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
       month: '',
       projected: 0,
       conservative: 0,
-      currency: 'USD',
+      currency: userCurrency,
     },
   );
 
@@ -463,6 +495,7 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
   const currentMonthRevenue = await prisma.invoice.aggregate({
     where: {
       userId,
+      currency: userCurrency,
       status: 'PAID',
       paidAt: { gte: currentMonthStart, lte: today },
     },
@@ -506,7 +539,7 @@ async function getCashFlowForecast(userId: string, months: number = 6) {
         month: peakMonth.month,
         projected: peakMonth.projected,
         conservative: peakMonth.conservative,
-        currency: 'USD',
+        currency: userCurrency,
       },
       projectedGrowth: {
         percent: projectedGrowthPercent,
