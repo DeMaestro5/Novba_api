@@ -125,6 +125,10 @@ router.put(
     await CacheService.invalidatePattern(
       CacheKeys.userSettingsPattern(req.user.id),
     );
+    await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
+    );
 
     new SuccessResponse('Profile settings updated successfully', {
       settings: updatedSettings,
@@ -170,6 +174,11 @@ router.put(
 
     await CacheService.invalidatePattern(
       CacheKeys.userSettingsPattern(req.user.id),
+    );
+
+    await CacheService.invalidateUserDashboard(req.user.id);
+    await CacheService.invalidatePattern(
+      CacheKeys.userInvoicesPattern(req.user.id),
     );
 
     new SuccessResponse('Invoice defaults updated successfully', {

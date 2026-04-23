@@ -150,6 +150,36 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
     _sum: { amount: true },
   });
 
+  const pendingByCurrency = await prisma.invoice.groupBy({
+    by: ['currency'],
+    where: {
+      userId,
+      status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] },
+    },
+    _sum: { total: true },
+    orderBy: { _sum: { total: 'desc' } },
+  });
+
+  const outstandingByCurrency = await prisma.invoice.groupBy({
+    by: ['currency'],
+    where: {
+      userId,
+      status: { in: ['SENT', 'OVERDUE', 'PARTIALLY_PAID'] },
+    },
+    _sum: { total: true },
+    orderBy: { _sum: { total: 'desc' } },
+  });
+
+  const revenueByCurrency = await prisma.invoice.groupBy({
+    by: ['currency'],
+    where: {
+      userId,
+      status: 'PAID',
+    },
+    _sum: { total: true },
+    orderBy: { _sum: { total: 'desc' } },
+  });
+
   return {
     // ── Stat cards ─────────────────────────────────────────────────────────
     revenue: {
@@ -191,6 +221,18 @@ async function getOverview(userId: string, startDate?: Date, endDate?: Date) {
       totalInvoices,
       overdueInvoices: overdueCount,
     },
+    pendingByCurrency: pendingByCurrency.map(r => ({
+      currency: r.currency,
+      total: Number(r._sum.total ?? 0),
+    })),
+    outstandingByCurrency: outstandingByCurrency.map(r => ({
+      currency: r.currency,
+      total: Number(r._sum.total ?? 0),
+    })),
+    revenueByCurrency: revenueByCurrency.map(r => ({
+      currency: r.currency,
+      total: Number(r._sum.total ?? 0),
+    })),
   };
 }
 
