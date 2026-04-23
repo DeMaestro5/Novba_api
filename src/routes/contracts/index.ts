@@ -402,6 +402,36 @@ router.post(
   }),
 );
 
+router.post(
+  '/:id/duplicate',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const contract = await ContractRepo.findById(req.params.id, req.user.id);
+    if (!contract) throw new NotFoundError('Contract not found');
+
+    const newContractNumber = await ContractRepo.generateContractNumber(req.user.id);
+
+    const duplicated = await ContractRepo.create({
+      userId: req.user.id,
+      clientId: contract.client.id,
+      contractNumber: newContractNumber,
+      title: `${contract.title} (Copy)`,
+      templateType: contract.templateType,
+      content: contract.content,
+      terms: contract.terms ?? undefined,
+      startDate: contract.startDate ?? undefined,
+      endDate: contract.endDate ?? undefined,
+    });
+
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id)
+    );
+
+    new SuccessResponse('Contract duplicated successfully', {
+      contract: getContractData(duplicated),
+    }).send(res);
+  }),
+);
+
 /**
  * GET /contracts/:id/pdf
  * Return contract as PDF (same template as email attachment; one canonical document).
