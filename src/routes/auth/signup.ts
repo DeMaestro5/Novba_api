@@ -3,7 +3,7 @@ import { SuccessResponse } from '../../core/ApiResponse';
 import { RoleRequest } from 'app-request';
 import crypto from 'crypto';
 import UserRepo from '../../database/repository/UserRepo';
-import { BadRequestError } from '../../core/ApiError';
+import { AuthFailureError, BadRequestError } from '../../core/ApiError';
 import { createTokens } from '../../auth/authUtils';
 import validator from '../../helpers/validator';
 import schema from './schema';
@@ -114,6 +114,11 @@ router.post(
   '/admin',
   validator(schema.signup),
   asyncHandler(async (req: RoleRequest, res) => {
+    const bootstrapSecret = req.headers['x-admin-bootstrap-secret'];
+    if (bootstrapSecret !== process.env.ADMIN_BOOTSTRAP_SECRET) {
+      throw new AuthFailureError('Invalid bootstrap secret');
+    }
+
     const admin = await UserRepo.findByEmail(req.body.email);
     if (admin) throw new BadRequestError('Admin already registered');
 
@@ -154,6 +159,7 @@ router.post(
       } as any,
       RoleCode.ADMIN,
     );
+    await UserRepo.updateInfo(createdAdmin.id, { verified: true });
 
     const keystore = await KeystoreRepo.create(
       createdAdmin.id,

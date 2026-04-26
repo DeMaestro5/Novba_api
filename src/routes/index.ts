@@ -32,6 +32,7 @@ import publicPortfolioLink from './portfolio/public';
 import uploadRoutes from './upload';
 import settings from './settings';
 import subscription from './subscription';
+import admin from './admin';
 import stripeSubscriptionWebhook from './webhooks/stripe-subscription';
 import publicRouter from './public';
 
@@ -98,5 +99,6 @@ router.use('/portfolio', portfolio);
 router.use('/upload', uploadRoutes);
 router.use('/settings', settings);
 router.use('/subscription', subscription);
+router.use('/admin', admin);
 
 export default router;
