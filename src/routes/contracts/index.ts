@@ -54,7 +54,10 @@ router.get(
     const cacheKey = CacheKeys.contractList(userId, page, limit, status || '');
     const cached = await CacheService.get(cacheKey);
     if (cached) {
-      return new SuccessResponse('Contracts fetched successfully', cached as object).send(res);
+      return new SuccessResponse(
+        'Contracts fetched successfully',
+        cached as object,
+      ).send(res);
     }
 
     const skip = (page - 1) * limit;
@@ -131,7 +134,9 @@ router.post(
       endDate, // Now properly converted
     });
 
-    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id),
+    );
 
     new SuccessResponse('Contract created successfully', {
       contract: getContractData(contract),
@@ -207,7 +212,9 @@ router.put(
       updateData,
     );
 
-    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id),
+    );
 
     new SuccessResponse('Contract updated successfully', {
       contract: getContractData(contract),
@@ -229,7 +236,9 @@ router.delete(
 
     await ContractRepo.remove(req.params.id, req.user.id);
 
-    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id),
+    );
 
     new SuccessResponse('Contract deleted successfully', {}).send(res);
   }),
@@ -273,16 +282,25 @@ router.post(
       });
       if (pdfBuffer) {
         const subject = `Contract: ${contract.title} – ${contract.contractNumber}`;
-        const senderName = (req.user as any).businessName || req.user.name || 'Your service provider';
+        const senderName =
+          (req.user as any).businessName ||
+          req.user.name ||
+          'Your service provider';
         const html = `
 <!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
   <div style="background:#fff;padding:40px;border-radius:12px;border:1px solid #e5e7eb;">
     <div style="margin-bottom:28px;"><span style="font-size:22px;font-weight:900;color:#111827;">nov</span><span style="font-size:22px;font-weight:900;color:#ea580c;">ba</span></div>
-    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Contract: ${contract.title}</h1>
+    <h1 style="color:#111827;margin:0 0 8px 0;font-size:22px;">Contract: ${
+      contract.title
+    }</h1>
     <p style="color:#6b7280;margin:0 0 24px 0;">From ${senderName}</p>
-    <p style="color:#374151;margin:0 0 16px 0;">Hi ${contract.client?.contactName || contract.client?.companyName},</p>
-    <p style="color:#374151;margin:0 0 24px 0;">Please find the attached contract <strong>${contract.contractNumber}</strong> for your review and signature.</p>
+    <p style="color:#374151;margin:0 0 16px 0;">Hi ${
+      contract.client?.contactName || contract.client?.companyName
+    },</p>
+    <p style="color:#374151;margin:0 0 24px 0;">Please find the attached contract <strong>${
+      contract.contractNumber
+    }</strong> for your review and signature.</p>
     <p style="color:#9ca3af;font-size:12px;margin:24px 0 0 0;border-top:1px solid #f3f4f6;padding-top:16px;">If you have any questions, reply to this email.</p>
   </div>
 </body></html>`;
@@ -322,7 +340,9 @@ router.post(
       // continue — logging failure must never cause a 500
     }
 
-    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id),
+    );
 
     new SuccessResponse('Contract sent successfully', {
       contract: getContractData(updatedContract),
@@ -394,7 +414,9 @@ router.post(
       });
     }
 
-    await CacheService.invalidatePattern(CacheKeys.userContractsPattern(req.user.id));
+    await CacheService.invalidatePattern(
+      CacheKeys.userContractsPattern(req.user.id),
+    );
 
     new SuccessResponse('Contract signed successfully', {
       contract: getContractData(signedContract),
@@ -408,7 +430,9 @@ router.post(
     const contract = await ContractRepo.findById(req.params.id, req.user.id);
     if (!contract) throw new NotFoundError('Contract not found');
 
-    const newContractNumber = await ContractRepo.generateContractNumber(req.user.id);
+    const newContractNumber = await ContractRepo.generateContractNumber(
+      req.user.id,
+    );
 
     const duplicated = await ContractRepo.create({
       userId: req.user.id,
@@ -423,7 +447,7 @@ router.post(
     });
 
     await CacheService.invalidatePattern(
-      CacheKeys.userContractsPattern(req.user.id)
+      CacheKeys.userContractsPattern(req.user.id),
     );
 
     new SuccessResponse('Contract duplicated successfully', {

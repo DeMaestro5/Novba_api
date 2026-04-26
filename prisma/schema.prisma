@@ -120,6 +120,18 @@ enum EmailStatus {
   BOUNCED
 }
 
+enum FeedbackType {
+  BUG
+  FEATURE
+  GENERAL
+}
+
+enum FeedbackStatus {
+  NEW
+  READ
+  RESOLVED
+}
+
 // ============================================
 // AUTHENTICATION & AUTHORIZATION
 // ============================================
@@ -239,7 +251,8 @@ model User {
   emailLogs      EmailLog[]
   subscriptions  Subscription[]
   reminderSettings  ReminderSettings?
-  
+  feedback          Feedback[]
+
   @@index([email])
   @@index([stripeCustomerId])
   @@index([subscriptionTier, subscriptionStatus])
@@ -715,4 +728,22 @@ model WaitlistEmail {
   createdAt DateTime @default(now())
 
   @@map("waitlist_emails")
+}
+
+model Feedback {
+  id        String         @id @default(uuid())
+  userId    String
+  type      FeedbackType
+  rating    Int?
+  message   String         @db.Text
+  status    FeedbackStatus @default(NEW)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@map("feedback")
 }
