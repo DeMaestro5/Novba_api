@@ -9,6 +9,8 @@ import authorization from '../../auth/authorization';
 import role from '../../helpers/role';
 import { RoleCode } from '../../database/types';
 import AdminRepo from '../../database/repository/AdminRepo';
+import FeedbackRepo from '../../database/repository/FeedbackRepo';
+import { FeedbackType, FeedbackStatus } from '@prisma/client';
 import { ProtectedRequest } from '../../types/app-request';
 
 const router = express.Router();
@@ -76,6 +78,53 @@ router.get(
     const result = await AdminRepo.getWaitlist(page, limit);
 
     new SuccessResponse('Waitlist fetched successfully', result).send(res);
+  }),
+);
+
+router.get(
+  '/feedback/stats',
+  asyncHandler(async (_req: ProtectedRequest, res) => {
+    const stats = await FeedbackRepo.getStats();
+    new SuccessResponse('Feedback stats fetched successfully', { stats }).send(res);
+  }),
+);
+
+router.get(
+  '/feedback',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const type = req.query.type as FeedbackType | undefined;
+    const status = req.query.status as FeedbackStatus | undefined;
+
+    const result = await FeedbackRepo.findAll(page, limit, type, status);
+    const stats = await FeedbackRepo.getStats();
+
+    new SuccessResponse('Feedback fetched successfully', {
+      feedback: result.feedback,
+      pagination: {
+        page,
+        limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / limit),
+      },
+      stats,
+    }).send(res);
+  }),
+);
+
+router.patch(
+  '/feedback/:id',
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const { status } = req.body;
+
+    if (!['NEW', 'READ', 'RESOLVED'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status value' });
+    }
+
+    const updated = await FeedbackRepo.updateStatus(req.params.id, status as FeedbackStatus);
+
+    new SuccessResponse('Feedback updated successfully', { feedback: updated }).send(res);
   }),
 );
 
