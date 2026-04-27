@@ -42,6 +42,7 @@ app.use((req, _res, next) => {
 const allowedOrigins = [
   corsUrl,
   'http://localhost:3000',
+  'http://localhost:3001',
   'https://www.usenovba.com',
 ].filter(Boolean);
 
