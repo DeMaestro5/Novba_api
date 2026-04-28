@@ -41,7 +41,8 @@ export default {
         return value;
       })
       .messages({
-        'string.pattern.base': 'Slug must contain only lowercase letters, numbers, and hyphens',
+        'string.pattern.base':
+          'Slug must contain only lowercase letters, numbers, and hyphens',
         'any.invalid': 'This slug is reserved and cannot be used',
       }),
     description: Joi.string().required().min(10).max(2000),
@@ -56,6 +57,7 @@ export default {
     caseStudy: Joi.string().optional().allow(''),
     testimonial: Joi.string().optional().allow(''),
     order: Joi.number().integer().min(0).optional(),
+    isPublished: Joi.boolean().optional(),
   }),
 
   update: Joi.object().keys({
