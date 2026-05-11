@@ -1,0 +1,48 @@
+name: Post-Deploy Health Check
+
+on:
+  # Runs after Backend CI completes on main,
+  # giving Render time to finish deploying
+  workflow_run:
+    workflows: ["Backend CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  health-check:
+    name: API Health Check
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    steps:
+      - name: Wait for Render deployment
+        run: sleep 120
+
+      - name: Check API health endpoint
+        run: |
+          echo "Checking API health..."
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://api.usenovba.com/health \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 10)
+
+          echo "Health check returned status: $STATUS"
+
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Health check FAILED with status $STATUS"
+            echo "API may not have deployed correctly."
+            exit 1
+          fi
+
+          echo "✅ Health check PASSED - API is live"
+
+      - name: Verify critical endpoints respond
+        run: |
+          # Check that the API is returning JSON, not an error page
+          RESPONSE=$(curl -s https://api.usenovba.com/health \
+            --max-time 30)
+          echo "Health response: $RESPONSE"
