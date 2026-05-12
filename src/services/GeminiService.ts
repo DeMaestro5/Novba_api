@@ -268,10 +268,10 @@ export async function generatePricingInsightsWithAI(context: {
 > {
   const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-  const isUndercharging =
+  const _isUndercharging =
     context.avgRate > 0 && context.avgRate < context.marketMedian;
   const rateDelta = context.marketMedian - context.avgRate;
-  const annualGap = Math.round(rateDelta * 40 * 48);
+  const _annualGap = Math.round(rateDelta * 40 * 48);
 
   const prompt = `
 You are a senior freelance business analyst. Generate personalized pricing insights for a freelancer based on their REAL business data. Be specific, direct, and use the exact numbers provided.

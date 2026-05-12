@@ -1,4 +1,4 @@
-.vscode/ 
+.vscode/
 
 node_modules/
 
@@ -6,3 +6,6 @@ node_modules/
 build/
 dist/
 tools/
+
+# Standalone scripts (CommonJS, not part of the TS build)
+send-launch.js
