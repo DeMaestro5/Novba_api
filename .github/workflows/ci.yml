@@ -10,6 +10,8 @@ jobs:
   quality:
     name: Type Check, Lint & Build
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout code
@@ -18,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -28,7 +30,7 @@ jobs:
         run: npx prisma generate
 
       - name: TypeScript check
-        run: npm run check
+        run: npx tsc --noEmit
 
       - name: Lint
         run: npm run eslint

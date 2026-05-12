@@ -1,5 +1,4 @@
 import { UserWithRoles } from '../../database/types';
-import _ from 'lodash';
 
 export enum AccessMode {
   LOGIN = 'LOGIN',

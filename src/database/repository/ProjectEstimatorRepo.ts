@@ -75,7 +75,7 @@ function detectProjectType(description: string): {
 
 function estimateProject(
   description: string,
-  projectType: string,
+  _projectType: string,
 ): ProjectEstimate {
   const { type, keywords } = detectProjectType(description);
   const desc = description.toLowerCase();
