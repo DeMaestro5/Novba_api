@@ -1,0 +1,6 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": ["build/**", "node_modules/**"],
+  "exec": "node -r dotenv/config build/server.js"
+}
