@@ -215,6 +215,7 @@ router.post(
   validator(schema.analyzeRate),
   asyncHandler(async (req: ProtectedRequest, res) => {
     const { rate, category, experienceLevel } = req.body;
+    const { freelancerLocation, clientMarket } = req.body;
 
     const analysis = await PricingRepo.analyzeUndercharging(
       req.user.id,
@@ -231,6 +232,8 @@ router.post(
       confidence: number;
       reasoning: string;
       negotiationTips: string[];
+      localRate: { min: number; median: number; max: number; context: string } | null;
+      internationalRate: { min: number; median: number; max: number; context: string } | null;
     } | null = null;
     try {
       aiInsights = await analyzeRateWithAI({
@@ -242,6 +245,8 @@ router.post(
         marketMedian: analysis.marketMedian,
         marketAverage: analysis.marketAverage,
         sampleSize: analysis.sampleSize ?? 500,
+        freelancerLocation: freelancerLocation ?? undefined,
+        clientMarket: clientMarket ?? 'BOTH',
       });
     } catch (err) {
       console.error('[Gemini] analyze-rate failed:', err);
@@ -273,6 +278,9 @@ router.post(
         ),
         reasoning: aiInsights?.reasoning ?? null,
         negotiationTips: aiInsights?.negotiationTips ?? [],
+        localRate: aiInsights?.localRate ?? null,
+        internationalRate: aiInsights?.internationalRate ?? null,
+        freelancerLocation: freelancerLocation ?? null,
         aiPowered: !!aiInsights,
       },
     }).send(res);
