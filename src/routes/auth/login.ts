@@ -20,6 +20,7 @@ router.post(
   loginLimiter,
   validator(schema.credential),
   asyncHandler(async (req: PublicRequest, res) => {
+    console.log('Im here');
     const { email, password, rememberMe = false } = req.body;
     const user = await UserRepo.findByEmail(email);
     if (!user) throw new BadRequestError('User not registered');
@@ -39,7 +40,12 @@ router.post(
 
     // KeystoreRepo.create expects userId (string), not user object
     await KeystoreRepo.create(user.id, accessTokenKey, refreshTokenKey);
-    const tokens = await createTokens(user, accessTokenKey, refreshTokenKey, rememberMe);
+    const tokens = await createTokens(
+      user,
+      accessTokenKey,
+      refreshTokenKey,
+      rememberMe,
+    );
     const userData = await getUserData(user);
 
     new SuccessResponse('Login Success', {

@@ -8,6 +8,15 @@ export default {
     experienceLevel: Joi.string()
       .valid('BEGINNER', 'INTERMEDIATE', 'EXPERT')
       .required(),
+    freelancerLocation: Joi.string().optional().allow('').max(100),
+    clientMarket: Joi.string()
+      .valid(
+        'LOCAL',
+        'INTERNATIONAL',
+        'BOTH'
+      )
+      .optional()
+      .default('BOTH'),
   }),
 
   marketRates: Joi.object().keys({

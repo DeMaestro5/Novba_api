@@ -1,15 +1,14 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 
-const apiKey = process.env.GEMINI_API_KEY;
+let groqClient: Groq | null = null;
 
-let genAI: GoogleGenerativeAI | null = null;
-
-function getClient(): GoogleGenerativeAI {
-  if (!genAI) {
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
-    genAI = new GoogleGenerativeAI(apiKey);
+function getClient(): Groq {
+  if (!groqClient) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+    groqClient = new Groq({ apiKey });
   }
-  return genAI;
+  return groqClient;
 }
 
 /**
@@ -25,44 +24,160 @@ export async function analyzeRateWithAI(params: {
   marketMedian: number;
   marketAverage: number;
   sampleSize: number;
+  freelancerLocation?: string;
+  clientMarket?: string;
 }): Promise<{
   message: string;
   suggestedRate: number;
   confidence: number;
   reasoning: string;
   negotiationTips: string[];
+  localRate: {
+    min: number;
+    median: number;
+    max: number;
+    context: string;
+  } | null;
+  internationalRate: {
+    min: number;
+    median: number;
+    max: number;
+    context: string;
+  } | null;
 }> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const {
+    role,
+    experienceLevel,
+    currentRate,
+    marketMin,
+    marketMax,
+    marketMedian,
+    marketAverage,
+    sampleSize,
+    freelancerLocation,
+    clientMarket,
+  } = params;
+
+  const isInternationalMarket =
+    !freelancerLocation ||
+    [
+      'United States',
+      'United Kingdom',
+      'Canada',
+      'Australia',
+      'Germany',
+      'Netherlands',
+      'Remote (Global)',
+    ].includes(freelancerLocation ?? '');
+
+  const locationContext =
+    freelancerLocation && !isInternationalMarket
+      ? `The freelancer is based in ${freelancerLocation}. This is important:
+     - Local market rates in ${freelancerLocation} are significantly
+       lower than US/EU rates
+     - International clients (US, UK, EU, Australia) pay global rates
+       regardless of freelancer location
+     - You MUST provide TWO separate rate recommendations:
+       1. localRate: what to charge local clients in ${freelancerLocation}
+       2. internationalRate: what to charge international clients
+     - The international rate should be competitive globally, NOT
+       discounted because of freelancer location
+     - Location-based pricing is about where the CLIENT is, not the
+       freelancer`
+      : `The freelancer operates in the standard international/US market.
+     Provide standard market rates. No location adjustment needed.`;
 
   const prompt = `
-You are a freelance pricing expert with deep knowledge of the global freelance market.
+You are a senior freelance business advisor with deep knowledge of
+global market rates. Analyze this freelancer's rate and provide
+specific, actionable guidance.
 
-A freelancer is asking for a rate analysis. Here are the facts:
-- Role/Skill: ${params.role}
-- Experience Level: ${params.experienceLevel}
-- Their current hourly rate: $${params.currentRate}/hr
-- Market data for this role at this level (${params.sampleSize.toLocaleString()} data points):
-  - Market minimum: $${params.marketMin}/hr
-  - Market median: $${params.marketMedian}/hr
-  - Market average: $${params.marketAverage}/hr
-  - Market maximum: $${params.marketMax}/hr
+FREELANCER PROFILE:
+- Role: ${role}
+- Experience level: ${experienceLevel}
+- Current rate: $${currentRate}/hr
+- Location: ${freelancerLocation || 'Not specified'}
+- Client market focus: ${clientMarket || 'BOTH'}
 
-Respond ONLY with a JSON object. No markdown, no backticks, no explanation outside the JSON.
+MARKET DATA FOR ${role.toUpperCase()} (${experienceLevel}):
+- Market minimum: $${marketMin}/hr
+- Market median: $${marketMedian}/hr
+- Market maximum: $${marketMax}/hr
+- Market average: $${marketAverage}/hr
+- Data sample size: ${sampleSize}+ data points
+
+${locationContext}
+
+INSTRUCTIONS:
+Generate a precise rate analysis. Be direct and specific with numbers.
+Never give vague advice like "it depends" — give exact dollar amounts.
+
+${
+  !isInternationalMarket && freelancerLocation
+    ? `
+LOCATION-SPECIFIC REQUIREMENTS:
+You MUST include both localRate and internationalRate in your response.
+For ${freelancerLocation}-based freelancers:
+- Local rates are typically 20-40% of US/EU rates
+- International rates should be competitive globally (70-100% of US rates)
+- The gap represents a massive opportunity freelancers often miss
+`
+    : ''
+}
+
+Respond ONLY with a valid JSON object. No markdown, no explanation outside JSON.
 
 {
-  "message": "A direct, honest 1-2 sentence assessment of their rate vs the market. Be specific with numbers. If they're undercharging, say by how much. If they're competitive, acknowledge it.",
-  "suggestedRate": <a specific number between marketMin and marketMax that you recommend, as an integer>,
-  "confidence": <a number 70-95 representing confidence in this analysis>,
-  "reasoning": "2-3 sentences explaining why you chose this suggested rate, referencing their experience level and the market data",
-  "negotiationTips": ["tip 1", "tip 2", "tip 3"]
+  "message": "2-3 sentence direct assessment of their current rate",
+  "suggestedRate": <number — the single best rate recommendation in USD>,
+  "confidence": <number 0-100>,
+  "reasoning": "2-3 sentences explaining the recommendation with specific numbers",
+  "negotiationTips": [
+    "Specific tip 1 with exact numbers or scripts",
+    "Specific tip 2",
+    "Specific tip 3"
+  ],
+  "localRate": ${
+    !isInternationalMarket
+      ? `{
+    "min": <number>,
+    "median": <number>,
+    "max": <number>,
+    "context": "1 sentence about local market reality"
+  }`
+      : 'null'
+  },
+  "internationalRate": ${
+    !isInternationalMarket
+      ? `{
+    "min": <number>,
+    "median": <number>,
+    "max": <number>,
+    "context": "1 sentence about international opportunity"
+  }`
+      : 'null'
+  },
+  "isUndercharging": <boolean>,
+  "percentBelow": <number — how far below market median as percentage>,
+  "annualGap": <number — potential annual increase if they raise to suggested rate>
 }
 `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const completion = await getClient().chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+    const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    const parsed = JSON.parse(clean);
+    return {
+      ...parsed,
+      localRate: parsed.localRate ?? null,
+      internationalRate: parsed.internationalRate ?? null,
+    };
   } catch (err) {
     throw err;
   }
@@ -86,8 +201,6 @@ export async function estimateProjectWithAI(params: {
   totalHours: number;
   analyzedKeywords: string[];
 }> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
-
   const prompt = `
 You are a senior freelance pricing consultant. A freelancer wants to estimate the value of a project.
 
@@ -126,8 +239,13 @@ The breakdown should have exactly 4 phases. Each phase total (hours × rate) sho
 `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const completion = await getClient().chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+    const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
@@ -168,8 +286,6 @@ export async function generateRecommendationsWithAI(params: {
     priority: 'HIGH' | 'MEDIUM' | 'LOW';
   }>
 > {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
-
   const annualHours = 40 * 48;
   const potentialIncrease = Math.round(
     (params.marketMedian - params.currentRate) * annualHours,
@@ -228,8 +344,13 @@ Generate exactly 5 recommendations. Respond ONLY with a JSON array. No markdown,
 `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const completion = await getClient().chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+    const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
     return JSON.parse(clean);
   } catch (err) {
@@ -266,8 +387,6 @@ export async function generatePricingInsightsWithAI(context: {
     priority: 'HIGH' | 'MEDIUM' | 'LOW';
   }>
 > {
-  const model = getClient().getGenerativeModel({ model: 'gemini-2.0-flash' });
-
   const _isUndercharging =
     context.avgRate > 0 && context.avgRate < context.marketMedian;
   const rateDelta = context.marketMedian - context.avgRate;
@@ -330,8 +449,13 @@ Respond ONLY with a JSON array. No markdown, no backticks, no explanation outsid
 `;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const completion = await getClient().chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2048,
+    });
+    const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
     // Ensure IDs are unique
