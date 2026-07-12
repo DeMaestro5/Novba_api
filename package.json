@@ -18,7 +18,9 @@
     "upgrade-latest": "npx npm-check-updates -u && npm install ",
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose",
     "prisma:generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down"
   },
   "repository": {
     "type": "git",

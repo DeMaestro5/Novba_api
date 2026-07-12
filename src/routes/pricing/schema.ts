@@ -8,13 +8,9 @@ export default {
     experienceLevel: Joi.string()
       .valid('BEGINNER', 'INTERMEDIATE', 'EXPERT')
       .required(),
-    freelancerLocation: Joi.string().optional().allow('').max(100),
+    freelancerLocation: Joi.string().required().trim().min(2).max(100),
     clientMarket: Joi.string()
-      .valid(
-        'LOCAL',
-        'INTERNATIONAL',
-        'BOTH'
-      )
+      .valid('LOCAL', 'INTERNATIONAL', 'BOTH')
       .optional()
       .default('BOTH'),
   }),
@@ -29,6 +25,9 @@ export default {
 
   estimateProject: Joi.object().keys({
     description: Joi.string().required().min(10).max(2000),
-    projectType: Joi.string().valid('HOURLY', 'FIXED').optional().default('FIXED'),
+    projectType: Joi.string()
+      .valid('HOURLY', 'FIXED')
+      .optional()
+      .default('FIXED'),
   }),
 };
