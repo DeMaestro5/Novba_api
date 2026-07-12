@@ -20,6 +20,7 @@ const router = express.Router();
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    console.log('[refresh] attempt received');
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
@@ -31,6 +32,9 @@ router.post(
     try {
       payload = await JWT.validate(refreshToken);
     } catch (e) {
+      console.warn('[refresh] FAIL: refresh-token decode failed', {
+        error: (e as Error)?.constructor?.name,
+      });
       if (e instanceof TokenExpiredError) {
         throw new AuthFailureError('Session expired — please log in again');
       }
@@ -53,11 +57,18 @@ router.post(
       payload.prm,
     );
     if (!keystore) {
+      console.warn('[refresh] FAIL: keystore mismatch', {
+        userId: payload.sub,
+        prm: payload.prm,
+      });
       throw new AuthFailureError('Session not found — please log in again');
     }
 
     const user = await UserRepo.findById(payload.sub);
-    if (!user) throw new AuthFailureError('User not found');
+    if (!user) {
+      console.warn('[refresh] FAIL: user not found', { userId: payload.sub });
+      throw new AuthFailureError('User not found');
+    }
 
     // Rotate — delete old keystore entry, create fresh one
     const newAccessTokenKey = crypto.randomBytes(64).toString('hex');

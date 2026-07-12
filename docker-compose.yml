@@ -60,6 +60,23 @@ services:
     volumes:
       - cache:/data/cache
 
+  postgres:
+    image: postgres:15-alpine
+    container_name: novba-postgres
+    environment:
+      POSTGRES_USER: novba
+      POSTGRES_PASSWORD: novba_local_dev
+      POSTGRES_DB: novba_dev
+    ports:
+      - '5433:5432'
+    volumes:
+      - novba_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U novba -d novba_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 # Our top-level volumes key defines the volumes dbdata.
 # When Docker creates volumes, the contents of the volume are stored in a part of the host filesystem, /var/lib/docker/volumes/, that’s managed by Docker.
 # The contents of each volume are stored in a directory under /var/lib/docker/volumes/ and get mounted to any container that uses the volume.
@@ -68,3 +85,4 @@ volumes:
   dbdata:
   cache:
     driver: local
+  novba_pgdata:

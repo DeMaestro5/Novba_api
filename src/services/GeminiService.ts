@@ -1,16 +1,47 @@
 import Groq from 'groq-sdk';
+import { aiResponseSchema } from './schema';
+
+export interface RateBlock {
+  min: number;
+  median: number;
+  max: number;
+  context: string;
+}
+
+export interface RateAIInsights {
+  message: string;
+  suggestedRate: number;
+  confidence: number;
+  reasoning: string;
+  negotiationTips: string[];
+  localRate: RateBlock;
+  internationalRate: RateBlock;
+  isUndercharging: boolean;
+  percentBelow: number;
+  annualGap: number;
+}
 
 let groqClient: Groq | null = null;
 
 function getClient(): Groq {
   if (!groqClient) {
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error('GROQ_API_KEY is not set');
+    if (!apiKey) {
+      console.error('[groq] GROQ_API_KEY is not set in this environment');
+      throw new Error('GROQ_API_KEY is not set');
+    }
     groqClient = new Groq({ apiKey });
   }
   return groqClient;
 }
 
+function assertRateOrder(block: RateBlock, label: string): void {
+  if (!(block.min < block.median && block.median < block.max)) {
+    throw new Error(
+      `AI returned illogical ${label}: min=${block.min}, median=${block.median}, max=${block.max}`,
+    );
+  }
+}
 /**
  * Analyze a freelancer's hourly rate against market data.
  * Returns structured JSON matching the existing analyzeUndercharging response shape.
@@ -24,27 +55,9 @@ export async function analyzeRateWithAI(params: {
   marketMedian: number;
   marketAverage: number;
   sampleSize: number;
-  freelancerLocation?: string;
+  freelancerLocation: string;
   clientMarket?: string;
-}): Promise<{
-  message: string;
-  suggestedRate: number;
-  confidence: number;
-  reasoning: string;
-  negotiationTips: string[];
-  localRate: {
-    min: number;
-    median: number;
-    max: number;
-    context: string;
-  } | null;
-  internationalRate: {
-    min: number;
-    median: number;
-    max: number;
-    context: string;
-  } | null;
-}> {
+}): Promise<RateAIInsights> {
   const {
     role,
     experienceLevel,
@@ -58,34 +71,7 @@ export async function analyzeRateWithAI(params: {
     clientMarket,
   } = params;
 
-  const isInternationalMarket =
-    !freelancerLocation ||
-    [
-      'United States',
-      'United Kingdom',
-      'Canada',
-      'Australia',
-      'Germany',
-      'Netherlands',
-      'Remote (Global)',
-    ].includes(freelancerLocation ?? '');
-
-  const locationContext =
-    freelancerLocation && !isInternationalMarket
-      ? `The freelancer is based in ${freelancerLocation}. This is important:
-     - Local market rates in ${freelancerLocation} are significantly
-       lower than US/EU rates
-     - International clients (US, UK, EU, Australia) pay global rates
-       regardless of freelancer location
-     - You MUST provide TWO separate rate recommendations:
-       1. localRate: what to charge local clients in ${freelancerLocation}
-       2. internationalRate: what to charge international clients
-     - The international rate should be competitive globally, NOT
-       discounted because of freelancer location
-     - Location-based pricing is about where the CLIENT is, not the
-       freelancer`
-      : `The freelancer operates in the standard international/US market.
-     Provide standard market rates. No location adjustment needed.`;
+  const market = clientMarket ?? 'BOTH';
 
   const prompt = `
 You are a senior freelance business advisor with deep knowledge of
@@ -95,41 +81,29 @@ specific, actionable guidance.
 FREELANCER PROFILE:
 - Role: ${role}
 - Experience level: ${experienceLevel}
-- Current rate: $${currentRate}/hr
-- Location: ${freelancerLocation || 'Not specified'}
-- Client market focus: ${clientMarket || 'BOTH'}
+- Current rate: $${currentRate}/hr (USD)
+- Based in: ${freelancerLocation}
+- Client market focus: ${market}
 
-MARKET DATA FOR ${role.toUpperCase()} (${experienceLevel}):
-- Market minimum: $${marketMin}/hr
-- Market median: $${marketMedian}/hr
-- Market maximum: $${marketMax}/hr
-- Market average: $${marketAverage}/hr
-- Data sample size: ${sampleSize}+ data points
 
-${locationContext}
+INTERNAL REFERENCE DATA (not location-specific- use only as a rough sanity check, and prioritize your own market knowledge):
+- min $${marketMin}/hr, median $${marketMedian}/hr, max $${marketMax}/hr, average $${marketAverage}/hr
+ (${sampleSize}+ points)
 
-INSTRUCTIONS:
-Generate a precise rate analysis. Be direct and specific with numbers.
-Never give vague advice like "it depends" — give exact dollar amounts.
+ ANALYSIS RULES:
+ 1. localRate = what client located in ${freelancerLocation} typically pay for this role and experience level, reflecting that local economy.
+ 2. internationalRate = what US/EU/remote-first clients typically pay a remote freelancer with this profile, regardless of where they live.
+ 3. These two markets may be nearly identical (freelancer already in high-cost market) or far apart. Reflect economic reality; do not assume either direction.
+ 4. All rates in USD per hour. In each block, min < median < max.
+ 5. suggestedRate must follow the client market focus "${market}":
+    LOCAL -> within localRate range; INTERNATIONAL -> within international range; BOTH -> lean towards internationalRate, with localRate median as the floor
+ 6. Be specific with dollar amounts. Never say "it depends".   
 
-${
-  !isInternationalMarket && freelancerLocation
-    ? `
-LOCATION-SPECIFIC REQUIREMENTS:
-You MUST include both localRate and internationalRate in your response.
-For ${freelancerLocation}-based freelancers:
-- Local rates are typically 20-40% of US/EU rates
-- International rates should be competitive globally (70-100% of US rates)
-- The gap represents a massive opportunity freelancers often miss
-`
-    : ''
-}
-
-Respond ONLY with a valid JSON object. No markdown, no explanation outside JSON.
+Respond ONLY with a valid JSON object. No markdown fence, no text explanation outside JSON - exactly this structure:
 
 {
   "message": "2-3 sentence direct assessment of their current rate",
-  "suggestedRate": <number — the single best rate recommendation in USD>,
+  "suggestedRate": <number>,
   "confidence": <number 0-100>,
   "reasoning": "2-3 sentences explaining the recommendation with specific numbers",
   "negotiationTips": [
@@ -137,29 +111,18 @@ Respond ONLY with a valid JSON object. No markdown, no explanation outside JSON.
     "Specific tip 2",
     "Specific tip 3"
   ],
-  "localRate": ${
-    !isInternationalMarket
-      ? `{
+  "localRate": ${`{
     "min": <number>,
     "median": <number>,
     "max": <number>,
-    "context": "1 sentence about local market reality"
-  }`
-      : 'null'
-  },
-  "internationalRate": ${
-    !isInternationalMarket
-      ? `{
+    "context": "1 sentence on the ${freelancerLocation} market"
+  }`},
+  "internationalRate": ${`{
     "min": <number>,
     "median": <number>,
     "max": <number>,
     "context": "1 sentence about international opportunity"
-  }`
-      : 'null'
-  },
-  "isUndercharging": <boolean>,
-  "percentBelow": <number — how far below market median as percentage>,
-  "annualGap": <number — potential annual increase if they raise to suggested rate>
+  }`}
 }
 `;
 
@@ -167,18 +130,44 @@ Respond ONLY with a valid JSON object. No markdown, no explanation outside JSON.
     const completion = await getClient().chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
       max_tokens: 2048,
     });
     const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    return {
-      ...parsed,
-      localRate: parsed.localRate ?? null,
-      internationalRate: parsed.internationalRate ?? null,
-    };
+    const { error, value } = aiResponseSchema.validate(parsed, {
+      stripUnknown: true,
+    });
+    if (error)
+      throw new Error(`AI response failed validation: ${error.message}`);
+
+    assertRateOrder(value.localRate, 'localRate');
+    assertRateOrder(value.internationalRate, 'internationalRate');
+
+    const benchMark =
+      market === 'LOCAL'
+        ? value.localRate.median
+        : value.internationalRate.median;
+
+    const isUndercharging = currentRate < benchMark;
+    const percentBelow = isUndercharging
+      ? Math.round(((benchMark - currentRate) / benchMark) * 100)
+      : 0;
+
+    const BILLABLE_HOUR_PER_YEAR = 30 * 48;
+    const annualGap = isUndercharging
+      ? Math.round((value.suggestedRate - currentRate) * BILLABLE_HOUR_PER_YEAR)
+      : 0;
+    return { ...value, isUndercharging, percentBelow, annualGap };
   } catch (err) {
+    console.error('[pricing/ai] analyzeRateWithAI failed:', {
+      role,
+      freelancerLocation,
+      market,
+      error: err instanceof Error ? err.message : err,
+    });
     throw err;
   }
 }
