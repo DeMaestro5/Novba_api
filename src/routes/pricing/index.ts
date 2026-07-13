@@ -326,7 +326,7 @@ router.post(
   '/analyze-rate',
   validator(schema.analyzeRate),
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const { rate, category, experienceLevel } = req.body;
+    const { rate, category, experienceLevel, subcategory } = req.body;
     const { freelancerLocation, clientMarket } = req.body;
 
     const analysis = await PricingRepo.analyzeUndercharging(
@@ -342,6 +342,7 @@ router.post(
     try {
       aiInsights = await analyzeRateWithAI({
         role: category,
+        subcategory,
         experienceLevel,
         currentRate: rate,
         marketMin: analysis.marketMin ?? 0,

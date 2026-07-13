@@ -48,6 +48,7 @@ function assertRateOrder(block: RateBlock, label: string): void {
  */
 export async function analyzeRateWithAI(params: {
   role: string;
+  subcategory?: string;
   experienceLevel: string;
   currentRate: number;
   marketMin: number;
@@ -60,6 +61,7 @@ export async function analyzeRateWithAI(params: {
 }): Promise<RateAIInsights> {
   const {
     role,
+    subcategory,
     experienceLevel,
     currentRate,
     marketMin,
@@ -72,6 +74,7 @@ export async function analyzeRateWithAI(params: {
   } = params;
 
   const market = clientMarket ?? 'BOTH';
+  const specificRole = subcategory?.trim() || role;
 
   const prompt = `
 You are a senior freelance business advisor with deep knowledge of
@@ -79,7 +82,7 @@ global market rates. Analyze this freelancer's rate and provide
 specific, actionable guidance.
 
 FREELANCER PROFILE:
-- Role: ${role}
+- Role: ${specificRole}
 - Experience level: ${experienceLevel}
 - Current rate: $${currentRate}/hr (USD)
 - Based in: ${freelancerLocation}

@@ -443,9 +443,7 @@ async function buildInsightContext(userId: string) {
   const topClientRevenue =
     clientRevenues.length > 0 ? Math.max(...clientRevenues) : 0;
   const topClientRevenuePct =
-    totalRevenue > 0
-      ? Math.round((topClientRevenue / totalRevenue) * 100)
-      : 0;
+    totalRevenue > 0 ? Math.round((topClientRevenue / totalRevenue) * 100) : 0;
 
   // Total expenses and ratio
   const totalExpenses = expenses.reduce(
@@ -453,9 +451,7 @@ async function buildInsightContext(userId: string) {
     0,
   );
   const expenseToRevenueRatio =
-    totalRevenue > 0
-      ? Math.round((totalExpenses / totalRevenue) * 100)
-      : 0;
+    totalRevenue > 0 ? Math.round((totalExpenses / totalRevenue) * 100) : 0;
 
   return {
     totalInvoices: invoices.length,
