@@ -18,6 +18,7 @@ import {
   analyzeRateWithAI,
   RateAIInsights,
 } from '../../services/GeminiService';
+import UserRepo from '../../database/repository/UserRepo';
 
 const router = express.Router();
 
@@ -326,7 +327,7 @@ router.post(
   '/analyze-rate',
   validator(schema.analyzeRate),
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const { rate, category, experienceLevel } = req.body;
+    const { rate, category, experienceLevel, subcategory } = req.body;
     const { freelancerLocation, clientMarket } = req.body;
 
     const analysis = await PricingRepo.analyzeUndercharging(
@@ -336,12 +337,14 @@ router.post(
       experienceLevel,
     );
 
+    const skillProfile = await UserRepo.findSkillProfileById(req.user.id);
     // Enhance with Gemini AI insights
 
     let aiInsights: RateAIInsights | null = null;
     try {
       aiInsights = await analyzeRateWithAI({
         role: category,
+        subcategory,
         experienceLevel,
         currentRate: rate,
         marketMin: analysis.marketMin ?? 0,
@@ -351,6 +354,7 @@ router.post(
         sampleSize: analysis.sampleSize ?? 500,
         freelancerLocation: freelancerLocation,
         clientMarket: clientMarket ?? 'BOTH',
+        profile: skillProfile,
       });
     } catch (err) {
       console.error('[Gemini] analyze-rate failed:', err);

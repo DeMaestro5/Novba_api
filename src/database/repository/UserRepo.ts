@@ -169,7 +169,10 @@ async function findPrivateProfileById(
  * Update user information
  */
 async function updateInfo(id: string, data: UpdateUserData): Promise<User> {
-  console.log('[UserRepo.updateInfo] saving to DB:', JSON.stringify(data, null, 2));
+  console.log(
+    '[UserRepo.updateInfo] saving to DB:',
+    JSON.stringify(data, null, 2),
+  );
   return prisma.user.update({
     where: { id },
     data: {
@@ -358,6 +361,20 @@ async function findMany(
     },
   });
 }
+async function findSkillProfileById(id: string) {
+  return prisma.user.findUnique({
+    where: { id },
+    select: {
+      yearsOfExperience: true,
+      toolsAndSkills: true,
+      clientTypes: true,
+      negotiationPosture: true,
+      averageProjectValue: true,
+      industry: true,
+      experienceLevel: true,
+    },
+  });
+}
 
 /**
  * Count users with lifetime access (founding members)
@@ -381,6 +398,7 @@ export default {
   findPrivateProfileById,
   updateInfo,
   updatePassword,
+  findSkillProfileById,
   setPasswordResetToken,
   setEmailVerificationToken,
   verifyEmail,

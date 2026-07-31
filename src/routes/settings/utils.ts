@@ -88,7 +88,9 @@ export async function getStripeAccountStatus(accountId: string) {
 /**
  * Disconnect Stripe Connect account
  */
-export async function disconnectStripeAccount(accountId: string): Promise<void> {
+export async function disconnectStripeAccount(
+  accountId: string,
+): Promise<void> {
   const stripe = getStripeClient();
 
   if (!stripe) {
@@ -104,7 +106,10 @@ export async function disconnectStripeAccount(accountId: string): Promise<void> 
 export function formatSettings(settings: any) {
   // Helper to get display payment terms
   const getPaymentTermsDisplay = () => {
-    if (settings.defaultPaymentTerms === 'CUSTOM' && settings.defaultPaymentTermsCustom) {
+    if (
+      settings.defaultPaymentTerms === 'CUSTOM' &&
+      settings.defaultPaymentTermsCustom
+    ) {
       return settings.defaultPaymentTermsCustom;
     }
     // Convert enum to readable format
@@ -114,7 +119,9 @@ export function formatSettings(settings: any) {
       NET_60: 'Net 60',
       DUE_ON_RECEIPT: 'Due on Receipt',
     };
-    return termMap[settings.defaultPaymentTerms] || settings.defaultPaymentTerms;
+    return (
+      termMap[settings.defaultPaymentTerms] || settings.defaultPaymentTerms
+    );
   };
 
   return {
@@ -141,6 +148,19 @@ export function formatSettings(settings: any) {
       linkedinUrl: settings.linkedinUrl,
       twitterUrl: settings.twitterUrl,
       githubUrl: settings.githubUrl,
+      averageHourlyRate:
+        settings.averageHourlyRate != null
+          ? Number(settings.averageHourlyRate)
+          : null,
+      industry: settings.industry,
+      experienceLevel: settings.experienceLevel,
+      yearsOfExperience: settings.yearsOfExperience,
+      toolsAndSkills: settings.toolsAndSkills,
+      clientTypes: settings.clientTypes,
+      negotiationPosture: settings.negotiationPosture,
+      averageProjectValue: settings.averageProjectValue,
+      clientMarket: settings.clientMarket,
+      biggestChallenge: settings.biggestChallenge,
     },
     business: {
       businessName: settings.businessName,
@@ -158,11 +178,13 @@ export function formatSettings(settings: any) {
     invoiceDefaults: {
       defaultCurrency: settings.defaultCurrency,
       defaultPaymentTerms: settings.defaultPaymentTerms,
-      defaultPaymentTermsCustom: settings.defaultPaymentTermsCustom,  // ← ADD THIS
-      paymentTermsDisplay: getPaymentTermsDisplay(),  // ← ADD THIS (user-friendly)
+      defaultPaymentTermsCustom: settings.defaultPaymentTermsCustom, // ← ADD THIS
+      paymentTermsDisplay: getPaymentTermsDisplay(), // ← ADD THIS (user-friendly)
       defaultInvoiceNotes: settings.defaultInvoiceNotes,
       defaultInvoiceTerms: settings.defaultInvoiceTerms,
-      defaultTaxRate: settings.defaultTaxRate ? Number(settings.defaultTaxRate) : null,
+      defaultTaxRate: settings.defaultTaxRate
+        ? Number(settings.defaultTaxRate)
+        : null,
       invoiceNumberPrefix: settings.invoiceNumberPrefix,
       nextInvoiceNumber: settings.nextInvoiceNumber,
     },
