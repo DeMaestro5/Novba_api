@@ -222,4 +222,51 @@ router.post(
   }),
 );
 
+router.post(
+  '/complete',
+  validator(schema.complete),
+  asyncHandler(async (req: ProtectedRequest, res) => {
+    const user = await UserRepo.findById(req.user.id);
+
+    if (!user) {
+      throw new BadRequestError('User not found');
+    }
+
+    const currentStep = user.onboardingStep || 0;
+    const alreadyCompleted = user.onboardingCompleted || false;
+
+    // Idempotent: completing twice is fine, never an error
+    if (
+      alreadyCompleted ||
+      isOnboardingCompleted(currentStep, alreadyCompleted)
+    ) {
+      logger.info('Onboarding already completed (idempotent complete)', {
+        userId: user.id,
+        currentStep,
+      });
+
+      return new SuccessResponse('Onboarding already completed', {
+        currentStep,
+        completed: true,
+        progressPercentage: 100,
+        nextStep: null,
+      }).send(res);
+    }
+
+    await UserRepo.updateOnboarding(user.id, ONBOARDING_STEPS.COMPLETED, true);
+
+    logger.info('Onboarding completed', {
+      userId: user.id,
+      previousStep: currentStep,
+    });
+
+    return new SuccessResponse('Onboarding completed successfully', {
+      currentStep: ONBOARDING_STEPS.COMPLETED,
+      completed: true,
+      progressPercentage: 100,
+      nextStep: null,
+    }).send(res);
+  }),
+);
+
 export default router;

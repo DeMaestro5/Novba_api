@@ -30,6 +30,7 @@ export default {
       'string.max': 'Reason must be less than 500 characters',
     }),
   }),
+  complete: Joi.object().keys({}),
 
   /**
    * GET /status doesn't need body validation
