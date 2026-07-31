@@ -1,5 +1,10 @@
 import prisma from '../index';
-import { Prisma } from '@prisma/client';
+import {
+  NegotiationPosture,
+  Prisma,
+  ProjectValueRange,
+  ClientType,
+} from '@prisma/client';
 
 export interface ProfileSettings {
   name?: string;
@@ -16,6 +21,16 @@ export interface ProfileSettings {
   linkedinUrl?: string | null;
   twitterUrl?: string | null;
   githubUrl?: string | null;
+  industry?: string | null;
+  experienceLevel?: string | null;
+  yearsOfExperience?: number | null;
+  toolsAndSkills?: string[];
+  clientTypes?: ClientType[];
+  negotiationPosture?: NegotiationPosture | null;
+  averageProjectValue?: ProjectValueRange | null;
+  clientMarket?: string | null;
+  biggestChallenge?: string | null;
+  averageHourlyRate?: number | null;
 }
 
 export interface BusinessSettings {
@@ -35,7 +50,7 @@ export interface BusinessSettings {
 export interface InvoiceDefaults {
   defaultCurrency?: string;
   defaultPaymentTerms?: string;
-  defaultPaymentTermsCustom?: string; 
+  defaultPaymentTermsCustom?: string;
   defaultInvoiceNotes?: string;
   defaultInvoiceTerms?: string;
   defaultTaxRate?: number;
@@ -217,6 +232,16 @@ async function updateProfileSettings(userId: string, data: ProfileSettings) {
       linkedinUrl: true,
       twitterUrl: true,
       githubUrl: true,
+      industry: true,
+      experienceLevel: true,
+      yearsOfExperience: true,
+      toolsAndSkills: true,
+      clientTypes: true,
+      negotiationPosture: true,
+      averageProjectValue: true,
+      clientMarket: true,
+      biggestChallenge: true,
+      averageHourlyRate: true,
     },
   });
 }
@@ -337,6 +362,7 @@ async function disconnectStripe(userId: string) {
 
 export default {
   getProfileSettings,
+
   getBusinessSettings,
   getInvoiceDefaults,
   getStripeSettings,

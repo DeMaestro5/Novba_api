@@ -1,5 +1,20 @@
 import Groq from 'groq-sdk';
 import { aiResponseSchema } from './schema';
+import {
+  ClientType,
+  NegotiationPosture,
+  ProjectValueRange,
+} from '@prisma/client';
+
+export interface SkillProfile {
+  yearsOfExperience: number | null;
+  toolsAndSkills: string[];
+  clientTypes: ClientType[];
+  negotiationPosture: NegotiationPosture | null;
+  averageProjectValue: ProjectValueRange | null;
+  industry: string | null;
+  experienceLevel: string | null;
+}
 
 export interface RateBlock {
   min: number;
@@ -58,6 +73,7 @@ export async function analyzeRateWithAI(params: {
   sampleSize: number;
   freelancerLocation: string;
   clientMarket?: string;
+  profile?: SkillProfile | null;
 }): Promise<RateAIInsights> {
   const {
     role,
@@ -71,7 +87,48 @@ export async function analyzeRateWithAI(params: {
     sampleSize,
     freelancerLocation,
     clientMarket,
+    profile,
   } = params;
+
+  const PROJECT_VALUE_TEXT: Record<ProjectValueRange, string> = {
+    UNDER_500: 'under $500',
+    FROM_500_TO_2K: '$500–$2,000',
+    FROM_2K_TO_5K: '$2,000–$5,000',
+    FROM_5K_TO_15K: '$5,000–$15,000',
+    OVER_15K: 'over $15,000',
+  };
+
+  const POSTURE_TEXT: Record<NegotiationPosture, string> = {
+    NEED_EVERY_JOB: 'needs every job — little room to decline offers',
+    SELECTIVE: 'somewhat selective — can occasionally decline poor offers',
+    CAN_DECLINE: 'healthy pipeline — can confidently walk away from bad offers',
+  };
+
+  const profileLines: string[] = [];
+  if (profile?.yearsOfExperience != null)
+    profileLines.push(`- Years of experience: ${profile.yearsOfExperience}`);
+  if (profile?.toolsAndSkills?.length)
+    profileLines.push(`- Tools & skills: ${profile.toolsAndSkills.join(', ')}`);
+  if (profile?.clientTypes?.length)
+    profileLines.push(
+      `- Typical clients: ${profile.clientTypes.join(', ').toLowerCase()}`,
+    );
+  if (profile?.averageProjectValue)
+    profileLines.push(
+      `- Typical project value: ${
+        PROJECT_VALUE_TEXT[profile.averageProjectValue]
+      }`,
+    );
+  if (profile?.negotiationPosture)
+    profileLines.push(
+      `- Negotiation position: ${POSTURE_TEXT[profile.negotiationPosture]}`,
+    );
+
+  const profileSection = profileLines.length
+    ? `\nEXTENDED PROFILE (from the freelancer's saved account data):\n${profileLines.join(
+        '\n',
+      )}\n`
+    : '';
 
   const market = clientMarket ?? 'BOTH';
   const specificRole = subcategory?.trim() || role;
@@ -88,6 +145,7 @@ FREELANCER PROFILE:
 - Based in: ${freelancerLocation}
 - Client market focus: ${market}
 
+${profileSection}
 
 INTERNAL REFERENCE DATA (not location-specific- use only as a rough sanity check, and prioritize your own market knowledge):
 - min $${marketMin}/hr, median $${marketMedian}/hr, max $${marketMax}/hr, average $${marketAverage}/hr
@@ -100,7 +158,11 @@ INTERNAL REFERENCE DATA (not location-specific- use only as a rough sanity check
  4. All rates in USD per hour. In each block, min < median < max.
  5. suggestedRate must follow the client market focus "${market}":
     LOCAL -> within localRate range; INTERNATIONAL -> within international range; BOTH -> lean towards internationalRate, with localRate median as the floor
- 6. Be specific with dollar amounts. Never say "it depends".   
+ 6. Be specific with dollar amounts. Never say "it depends". 
+ 7. If an EXTENDED PROFILE is provided, weigh it heavily: negotiation
+   posture must shape the negotiationTips (someone who can decline
+   gets bolder scripts than someone who needs every job); specialized
+   tools and repeat client types justify premium positioning.  
 
 Respond ONLY with a valid JSON object. No markdown fence, no text explanation outside JSON - exactly this structure:
 

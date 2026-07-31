@@ -131,7 +131,7 @@ router.put(
     );
 
     new SuccessResponse('Profile settings updated successfully', {
-      settings: updatedSettings,
+      settings: formatSettings(updatedSettings),
     }).send(res);
   }),
 );

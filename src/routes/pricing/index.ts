@@ -18,6 +18,7 @@ import {
   analyzeRateWithAI,
   RateAIInsights,
 } from '../../services/GeminiService';
+import UserRepo from '../../database/repository/UserRepo';
 
 const router = express.Router();
 
@@ -336,6 +337,7 @@ router.post(
       experienceLevel,
     );
 
+    const skillProfile = await UserRepo.findSkillProfileById(req.user.id);
     // Enhance with Gemini AI insights
 
     let aiInsights: RateAIInsights | null = null;
@@ -352,6 +354,7 @@ router.post(
         sampleSize: analysis.sampleSize ?? 500,
         freelancerLocation: freelancerLocation,
         clientMarket: clientMarket ?? 'BOTH',
+        profile: skillProfile,
       });
     } catch (err) {
       console.error('[Gemini] analyze-rate failed:', err);

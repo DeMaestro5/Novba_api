@@ -38,6 +38,26 @@ enum ProposalStatus {
   EXPIRED
 }
 
+enum ClientType {
+  INDIVIDUALS
+  STARTUPS
+  ENTERPRISE
+  AGENCIES
+}
+
+enum NegotiationPosture {
+  NEED_EVERY_JOB
+  SELECTIVE
+  CAN_DECLINE
+}
+
+enum ProjectValueRange {
+  UNDER_500
+  FROM_500_TO_2K
+  FROM_2K_TO_5K
+  FROM_5K_TO_15K
+  OVER_15K
+}
 enum SubscriptionStatus {
   ACTIVE
   CANCELLED
@@ -195,6 +215,14 @@ model User {
   averageHourlyRate Decimal? @db.Decimal(10, 2)
   industry          String?
   experienceLevel   String?
+  yearsOfExperience  Int?
+  toolsAndSkills    String[]    @default([])
+  clientTypes   ClientType[] @default([])
+  negotiationPosture NegotiationPosture?
+  averageProjectValue ProjectValueRange?
+  clientMarket String?
+  biggestChallenge String?
+
   
   portfolioSlug     String?    @unique
   portfolioTitle    String?
