@@ -11,6 +11,7 @@ import {
   formatPricingMessage,
   getConfidenceDescription,
   calculatePercentile,
+  buildRateAnalysisResponse,
 } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
@@ -374,28 +375,15 @@ router.post(
       analysis.marketMax || 0,
     );
 
+    const analysisPayload = buildRateAnalysisResponse({
+      rate,
+      freelancerLocation,
+      analysis,
+      aiInsights,
+    });
+
     new SuccessResponse('Rate analysis completed', {
-      analysis: {
-        yourRate: rate,
-        ...analysis,
-        isUndercharging:
-          aiInsights?.isUndercharging ?? analysis.isUndercharging,
-        percentBelow: aiInsights?.percentBelow ?? analysis.percentBelow,
-        annualGap:
-          aiInsights?.annualGap ?? analysis.potentialAnnualIncrease ?? 0,
-        suggestedRate: aiInsights?.suggestedRate ?? analysis.recommendedRate,
-        alert: message,
-        percentile,
-        confidenceDescription: getConfidenceDescription(
-          aiInsights?.confidence ?? analysis.confidence,
-        ),
-        reasoning: aiInsights?.reasoning ?? null,
-        negotiationTips: aiInsights?.negotiationTips ?? [],
-        localRate: aiInsights?.localRate ?? null,
-        internationalRate: aiInsights?.internationalRate ?? null,
-        freelancerLocation: freelancerLocation ?? null,
-        aiPowered: !!aiInsights,
-      },
+      analysis: analysisPayload,
     }).send(res);
   }),
 );

@@ -23,6 +23,20 @@ export interface RateBlock {
   context: string;
 }
 
+export interface PushBackScript {
+  objection: string;
+  response: string;
+}
+
+export interface NegotiationBrief {
+  positioning: string;
+  howToPresent: string;
+  pushBack: PushBackScript[];
+  holdFirmWhen: string[];
+  acceptLowerWhen: string[];
+  redFlags: string[];
+}
+
 export interface RateAIInsights {
   message: string;
   suggestedRate: number;
@@ -34,6 +48,7 @@ export interface RateAIInsights {
   isUndercharging: boolean;
   percentBelow: number;
   annualGap: number;
+  negotiationBrief: NegotiationBrief;
 }
 
 let groqClient: Groq | null = null;
@@ -147,6 +162,7 @@ FREELANCER PROFILE:
 
 ${profileSection}
 
+
 INTERNAL REFERENCE DATA (not location-specific- use only as a rough sanity check, and prioritize your own market knowledge):
 - min $${marketMin}/hr, median $${marketMedian}/hr, max $${marketMax}/hr, average $${marketAverage}/hr
  (${sampleSize}+ points)
@@ -162,7 +178,25 @@ INTERNAL REFERENCE DATA (not location-specific- use only as a rough sanity check
  7. If an EXTENDED PROFILE is provided, weigh it heavily: negotiation
    posture must shape the negotiationTips (someone who can decline
    gets bolder scripts than someone who needs every job); specialized
-   tools and repeat client types justify premium positioning.  
+   tools and repeat client types justify premium positioning. 
+8. negotiationBrief is a script the freelancer reads before a client call.
+    Write every line in FIRST PERSON, ready to say out loud — "My rate for
+    this kind of work is $X/hr" — never "the freelancer should explain".
+    Anchor howToPresent and every pushBack response to the actual
+    suggestedRate of $${'${value.suggestedRate}'} ... (see note below)
+    Objections must be things clients really say ("that's above our budget",
+    "we can get this cheaper", "can you do a lower rate for ongoing work").
+    Negotiation posture governs firmness: CAN_DECLINE gets walk-away lines;
+    SELECTIVE gets confident-but-flexible lines; NEED_EVERY_JOB gets
+    face-saving trades (reduce scope, phase the work, adjust deliverables)
+    rather than simply dropping the rate.
+    Produce exactly 3 pushBack pairs, 2-3 holdFirmWhen, 2-3 acceptLowerWhen,
+    and 3 redFlags. holdFirmWhen and acceptLowerWhen must describe concrete, observable
+    situations tied to this freelancer's profile and rate — not generic
+    advice like "the project is complex". redFlags must be behaviours
+    observable DURING the conversation (evasive about budget, pressure to
+    start before terms are agreed, scope growing while price stays fixed) —
+    never things the freelancer cannot know, like payment history.
 
 Respond ONLY with a valid JSON object. No markdown fence, no text explanation outside JSON - exactly this structure:
 
@@ -187,7 +221,19 @@ Respond ONLY with a valid JSON object. No markdown fence, no text explanation ou
     "median": <number>,
     "max": <number>,
     "context": "1 sentence about international opportunity"
-  }`}
+  }`},
+  "negotiationBrief": {
+    "positioning": "1-2 sentences, spoken in first person, on how to frame your expertise before price comes up",
+    "howToPresent": "2-3 sentences — the exact words to say when stating your rate, including the $ number",
+    "pushBack": [
+      { "objection": "the exact words a client says to push back", "response": "the exact words to say back, in first person" },
+      { "objection": "...", "response": "..." },
+      { "objection": "...", "response": "..." }
+    ],
+    "holdFirmWhen": ["specific situation where you should not lower the rate", "another"],
+    "acceptLowerWhen": ["specific situation where a lower rate is a smart trade", "another"],
+    "redFlags": ["concrete client behaviour that signals trouble", "another", "another"]
+  }
 }
 `;
 
@@ -197,7 +243,7 @@ Respond ONLY with a valid JSON object. No markdown fence, no text explanation ou
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
       response_format: { type: 'json_object' },
-      max_tokens: 2048,
+      max_tokens: 4096,
     });
     const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
