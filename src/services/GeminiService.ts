@@ -1,10 +1,43 @@
 import Groq from 'groq-sdk';
-import { aiResponseSchema } from './schema';
+import { aiResponseSchema, projectEstimateAiSchema } from './schema';
 import {
   ClientType,
   NegotiationPosture,
   ProjectValueRange,
 } from '@prisma/client';
+
+export interface ProjectEstimateBlock {
+  low: number;
+  recommended: number;
+  high: number;
+  context: string;
+}
+
+export interface ProjectEstimateAiResult {
+  localEstimate: ProjectEstimateBlock;
+  internationalEstimate: ProjectEstimateBlock;
+  confidence: number;
+  projectType: string;
+  reasoning: string[];
+  localBreakdown: {
+    label: string;
+    percentOfTotal: number;
+    hours: number;
+    rate: number;
+    total: number;
+  }[];
+  internationalBreakdown: {
+    label: string;
+    percentOfTotal: number;
+    hours: number;
+    rate: number;
+    total: number;
+  }[];
+  localTotalHours: number;
+  internationalTotalHours: number;
+  suggestedPrice: number;
+  analyzedKeywords: string[];
+}
 
 export interface SkillProfile {
   yearsOfExperience: number | null;
@@ -63,6 +96,14 @@ function getClient(): Groq {
     groqClient = new Groq({ apiKey });
   }
   return groqClient;
+}
+
+function assertEstimateOrder(block: ProjectEstimateBlock, label: string): void {
+  if (!(block.low < block.recommended && block.recommended < block.high)) {
+    throw new Error(
+      `AI returned illogical ${label}: low=${block.low}, recommended=${block.recommended}, high=${block.high}`,
+    );
+  }
 }
 
 function assertRateOrder(block: RateBlock, label: string): void {
@@ -290,22 +331,23 @@ Respond ONLY with a valid JSON object. No markdown fence, no text explanation ou
 export async function estimateProjectWithAI(params: {
   description: string;
   projectType: string;
-}): Promise<{
-  low: number;
-  recommended: number;
-  high: number;
-  confidence: number;
-  projectType: string;
-  reasoning: string[];
-  breakdown: { label: string; hours: number; rate: number; total: number }[];
-  totalHours: number;
-  analyzedKeywords: string[];
-}> {
+  freelancerLocation: string;
+  clientMarket: string;
+}): Promise<ProjectEstimateAiResult> {
+  const { description, projectType, freelancerLocation, clientMarket } = params;
   const prompt = `
 You are a senior freelance pricing consultant. A freelancer wants to estimate the value of a project.
 
-Project description: "${params.description}"
-Pricing model: ${params.projectType} (FIXED or HOURLY)
+Project description: "${description}"
+Pricing model: ${projectType} (FIXED or HOURLY)
+
+Freelancer location: ${freelancerLocation}
+Client market focus: ${clientMarket}
+
+Provide TWO estimates:
+- localEstimate: what clients based in ${freelancerLocation} would typically pay for this project, reflecting that local economy.
+- internationalEstimate: what US/EU/remote-first clients would typically pay for this project, regardless of freelancer location.
+These may be similar or far apart — reflect economic reality, do not assume either direction.
 
 Analyze this project and provide a realistic market-rate estimate. Consider:
 - Project complexity based on the description
@@ -316,9 +358,8 @@ Analyze this project and provide a realistic market-rate estimate. Consider:
 Respond ONLY with a JSON object. No markdown, no backticks, no explanation outside the JSON.
 
 {
-  "low": <conservative estimate as integer, round to nearest 100>,
-  "recommended": <recommended estimate as integer, round to nearest 100>,
-  "high": <premium estimate as integer, round to nearest 100>,
+  "localEstimate": { "low": <int>, "recommended": <int>, "high": <int>, "context": "<1 sentence on the local market>" },
+"internationalEstimate": { "low": <int>, "recommended": <int>, "high": <int>, "context": "<1 sentence on the international opportunity>" },
   "confidence": <integer 70-95>,
   "projectType": "<detected project category: brand/website/app/content/social/video/marketing/development/general>",
   "reasoning": [
@@ -327,43 +368,86 @@ Respond ONLY with a JSON object. No markdown, no backticks, no explanation outsi
     "<tactical advice for proposing this project>"
   ],
   "breakdown": [
-    { "label": "<phase name>", "hours": <integer>, "rate": <hourly rate integer> },
-    { "label": "<phase name>", "hours": <integer>, "rate": <hourly rate integer> },
-    { "label": "<phase name>", "hours": <integer>, "rate": <hourly rate integer> },
-    { "label": "<phase name>", "hours": <integer>, "rate": <hourly rate integer> }
-  ],
+    { "label": "<phase name>", "percentOfTotal": <integer 5-60> },
+    { "label": "<phase name>", "percentOfTotal": <integer 5-60> },
+    { "label": "<phase name>", "percentOfTotal": <integer 5-60> },
+    { "label": "<phase name>", "percentOfTotal": <integer 5-60> }
+  ]
   "analyzedKeywords": ["<keyword1>", "<keyword2>", "<keyword3>"]
 }
 
-The breakdown should have exactly 4 phases. Each phase total (hours × rate) should sum roughly to the recommended value.
+The 4 percentOfTotal values must sum to exactly 100.
 `;
 
   try {
     const completion = await getClient().chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
       max_tokens: 2048,
     });
     const text = completion.choices[0]?.message?.content?.trim() ?? '';
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
+    const { error, value } = projectEstimateAiSchema.validate(parsed, {
+      stripUnknown: true,
+    });
+    if (error)
+      throw new Error(`AI response failed validation: ${error.message}`);
 
-    // Add computed totals to breakdown
-    parsed.breakdown = parsed.breakdown.map(
-      (item: { label: string; hours: number; rate: number }) => ({
-        ...item,
-        total: item.hours * item.rate,
-      }),
+    assertEstimateOrder(value.localEstimate, 'localEstimate');
+    assertEstimateOrder(value.internationalEstimate, 'internationalEstimate');
+
+    function buildBreakdown(
+      target: ProjectEstimateBlock,
+      proportions: { label: string; percentOfTotal: number }[],
+    ) {
+      const rate = Math.round(target.recommended / 40);
+      const breakdown = proportions.map((item) => {
+        const total = Math.round(
+          (item.percentOfTotal / 100) * target.recommended,
+        );
+        const hours = Math.round(total / rate) || 1;
+        return { ...item, hours, rate, total };
+      });
+      const totalHours = breakdown.reduce((sum, item) => sum + item.hours, 0);
+      return { breakdown, totalHours };
+    }
+
+    const localBreakdown = buildBreakdown(value.localEstimate, value.breakdown);
+    const internationalBreakdown = buildBreakdown(
+      value.internationalEstimate,
+      value.breakdown,
     );
 
-    parsed.totalHours = parsed.breakdown.reduce(
-      (sum: number, item: { hours: number }) => sum + item.hours,
-      0,
-    );
+    const suggestedPrice =
+      clientMarket === 'LOCAL'
+        ? value.localEstimate.recommended
+        : clientMarket === 'INTERNATIONAL'
+          ? value.internationalEstimate.recommended
+          : Math.round(
+              (value.localEstimate.recommended +
+                value.internationalEstimate.recommended) /
+                2,
+            );
 
-    return parsed;
+    value.localBreakdown = localBreakdown.breakdown;
+    value.internationalBreakdown = internationalBreakdown.breakdown;
+    value.localTotalHours = localBreakdown.totalHours;
+    value.internationalTotalHours = internationalBreakdown.totalHours;
+    value.suggestedPrice = suggestedPrice;
+
+    delete value.breakdown;
+    delete value.totalHours;
+
+    return value;
   } catch (err) {
+    console.error('[pricing/ai] estimateProjectWithAi failed:', {
+      freelancerLocation,
+      clientMarket,
+      error: err instanceof Error ? err.message : err,
+    });
     throw err;
   }
 }

@@ -31,3 +31,28 @@ export const aiResponseSchema = Joi.object({
   internationalRate: rateBlockSchema.required(),
   negotiationBrief: negotiationBrief.required(),
 });
+
+const estimateBlockSchema = Joi.object({
+  low: Joi.number().positive().required(),
+  recommended: Joi.number().positive().required(),
+  high: Joi.number().positive().required(),
+  context: Joi.string().required(),
+});
+
+export const projectEstimateAiSchema = Joi.object({
+  localEstimate: estimateBlockSchema.required(),
+  internationalEstimate: estimateBlockSchema.required(),
+  confidence: Joi.number().min(0).max(100).required(),
+  projectType: Joi.string().required(),
+  reasoning: Joi.array().items(Joi.string()).min(2).max(4).required(),
+  breakdown: Joi.array()
+    .items(
+      Joi.object({
+        label: Joi.string().required(),
+        percentOfTotal: Joi.number().positive().max(100).required(),
+      }),
+    )
+    .length(4)
+    .required(),
+  analyzedKeywords: Joi.array().items(Joi.string()).max(5).required(),
+});

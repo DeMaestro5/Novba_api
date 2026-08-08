@@ -445,7 +445,8 @@ router.post(
   '/estimate-project',
   validator(schema.estimateProject),
   asyncHandler(async (req: ProtectedRequest, res) => {
-    const { description, projectType } = req.body;
+    const { description, projectType, freelancerLocation, clientMarket } =
+      req.body;
 
     // Try Gemini first, fall back to static estimator
     const { estimateProjectWithAI } = await import(
@@ -457,6 +458,8 @@ router.post(
     try {
       estimate = await estimateProjectWithAI({
         description,
+        freelancerLocation,
+        clientMarket,
         projectType: projectType ?? 'FIXED',
       });
       aiPowered = true;
