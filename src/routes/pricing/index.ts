@@ -7,12 +7,7 @@ import ProjectEstimatorRepo from '../../database/repository/ProjectEstimatorRepo
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
-import {
-  formatPricingMessage,
-  getConfidenceDescription,
-  calculatePercentile,
-  buildRateAnalysisResponse,
-} from './utils';
+import { buildRateAnalysisResponse } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import {
@@ -361,19 +356,19 @@ router.post(
       console.error('[Gemini] analyze-rate failed:', err);
     }
 
-    const message =
-      aiInsights?.message ??
-      formatPricingMessage(
-        analysis.isUndercharging,
-        analysis.percentBelow,
-        analysis.potentialAnnualIncrease || 0,
-      );
+    // const message =
+    //   aiInsights?.message ??
+    //   formatPricingMessage(
+    //     analysis.isUndercharging,
+    //     analysis.percentBelow,
+    //     analysis.potentialAnnualIncrease || 0,
+    //   );
 
-    const percentile = calculatePercentile(
-      rate,
-      analysis.marketMin || 0,
-      analysis.marketMax || 0,
-    );
+    // const percentile = calculatePercentile(
+    //   rate,
+    //   analysis.marketMin || 0,
+    //   analysis.marketMax || 0,
+    // );
 
     const analysisPayload = buildRateAnalysisResponse({
       rate,

@@ -1,4 +1,3 @@
-import { P } from '@upstash/redis/error-8y4qG0W2';
 import Joi from 'joi';
 
 export default {
