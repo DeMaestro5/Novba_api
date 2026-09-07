@@ -7,11 +7,7 @@ import ProjectEstimatorRepo from '../../database/repository/ProjectEstimatorRepo
 import validator from '../../helpers/validator';
 import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
-import {
-  formatPricingMessage,
-  calculatePercentile,
-  buildRateAnalysisResponse,
-} from './utils';
+import { buildRateAnalysisResponse } from './utils';
 import { ProtectedRequest } from '../../types/app-request';
 import authentication from '../../auth/authentication';
 import {
