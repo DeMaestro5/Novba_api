@@ -9,7 +9,6 @@ import schema from './schema';
 import asyncHandler from '../../helpers/asyncHandler';
 import {
   formatPricingMessage,
-  getConfidenceDescription,
   calculatePercentile,
   buildRateAnalysisResponse,
 } from './utils';
@@ -361,19 +360,19 @@ router.post(
       console.error('[Gemini] analyze-rate failed:', err);
     }
 
-    const message =
-      aiInsights?.message ??
-      formatPricingMessage(
-        analysis.isUndercharging,
-        analysis.percentBelow,
-        analysis.potentialAnnualIncrease || 0,
-      );
+    // const message =
+    //   aiInsights?.message ??
+    //   formatPricingMessage(
+    //     analysis.isUndercharging,
+    //     analysis.percentBelow,
+    //     analysis.potentialAnnualIncrease || 0,
+    //   );
 
-    const percentile = calculatePercentile(
-      rate,
-      analysis.marketMin || 0,
-      analysis.marketMax || 0,
-    );
+    // const percentile = calculatePercentile(
+    //   rate,
+    //   analysis.marketMin || 0,
+    //   analysis.marketMax || 0,
+    // );
 
     const analysisPayload = buildRateAnalysisResponse({
       rate,
